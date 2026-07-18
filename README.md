@@ -1,9 +1,9 @@
 # BTWDocumentDesigner-frontend
 
-Editor de plantillas PDF dinámicas de BTW. Angular 22.
-
-Este commit representa la **estructura base** (capas y contratos), sin UI del
-editor ni operaciones de visualización.
+Editor de plantillas PDF dinámicas de BTW. MVP desarrollado con Angular 22.
+Permite construir una plantilla A4 mediante texto, imagen y contenedor, editar
+sus propiedades y exportar el contrato JSON que posteriormente interpretará el
+generador de PDF.
 
 ## Ejecutar
 
@@ -16,6 +16,12 @@ npm start
 
 Abrir `http://localhost:4200`.
 
+Para verificar la compilación de producción:
+
+```bash
+npm run build
+```
+
 ## Arquitectura
 
 ```text
@@ -25,11 +31,11 @@ src/app/
 │   ├── factories/    Creación de los elementos
 │   └── ports/        Interfaces para servicios externos
 ├── application/
-│   └── editor/       Estado del editor (esqueleto)
+│   └── editor/       Estado y operaciones del editor
 ├── infrastructure/
-│   └── persistence/  Adaptador local (esqueleto)
+│   └── persistence/  Adaptador temporal de localStorage
 └── presentation/
-    └── editor/       Página del editor (sin canvas aún)
+    └── editor/       Interfaz Angular
 ```
 
 Las dependencias apuntan hacia el dominio:
@@ -39,16 +45,24 @@ Presentación → Aplicación → Dominio
 Infraestructura ─────────→ Dominio
 ```
 
+Cuando exista una API, se crea otro adaptador de `TemplateRepository`; el
+estado y los componentes visuales no necesitan conocer si la plantilla se
+guarda localmente o en el backend.
+
 ## Alcance actual
 
-- Capas Clean Architecture definidas.
-- Modelos del contrato JSON (`PdfTemplate`, `PdfElement`, etc.).
-- Puerto `TemplateRepository` y token de inyección.
-- Stubs de store, repositorio local y página del editor.
+- Hoja A4 y coordenadas en milímetros.
+- Componentes de texto, imagen y contenedor.
+- Agrupación recursiva de componentes dentro de contenedores.
+- Enlace y desvinculación de componentes padre-hijo.
+- Selección, movimiento y redimensionamiento.
+- Propiedades de texto y enlace mediante ruta XML.
+- Carga de imágenes.
+- Guardado local y exportación del JSON.
 
 ## Próximos incrementos
 
-1. Canvas A4 y paleta de componentes.
-2. Selección, movimiento y propiedades.
-3. Persistencia local y exportación JSON.
-4. Repositorio HTTP y vista previa del backend.
+1. Importar XML y obtener sus rutas disponibles.
+2. Sustituir marcadores para la vista previa.
+3. Implementar repositorio HTTP y versionamiento.
+4. Integrar la vista previa generada por el backend.

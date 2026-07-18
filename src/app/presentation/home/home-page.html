@@ -1,0 +1,85 @@
+<div class="home-shell">
+  <header class="hero">
+    <div class="hero-text">
+      <span class="brand-mark">P</span>
+      <div>
+        <h1>BTW Document Designer</h1>
+        <p>Crea un formato nuevo o continúa editando uno existente.</p>
+      </div>
+    </div>
+
+    <div class="hero-actions">
+      <button class="button primary" type="button" (click)="createBlank()">
+        + Crear formato en blanco
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="list-header">
+      <h2>Mis formatos</h2>
+      <input
+        class="search"
+        type="search"
+        placeholder="Buscar formatos…"
+        aria-label="Buscar formatos"
+        [value]="query()"
+        (input)="search($event)"
+      />
+    </div>
+
+    @if (filtered().length > 0) {
+      <div class="card-grid">
+        @for (template of filtered(); track template.document.id) {
+          <button class="card" type="button" (click)="open(template)">
+            <div
+              class="mini-page"
+              [class.mini-pos]="isPos(template)"
+              [style.aspect-ratio]="template.page.widthMm + ' / ' + template.page.heightMm"
+              [style.background]="template.page.background"
+            >
+              @for (element of template.components; track element.id) {
+                <span
+                  class="mini-element"
+                  [style.left.%]="(element.position.x / template.page.widthMm) * 100"
+                  [style.top.%]="(element.position.y / template.page.heightMm) * 100"
+                  [style.width.%]="(element.position.width / template.page.widthMm) * 100"
+                  [style.height.%]="(element.position.height / template.page.heightMm) * 100"
+                ></span>
+              }
+            </div>
+
+            <div class="card-info">
+              <strong>{{ template.document.name || 'Sin título' }}</strong>
+              <small>{{ formatLabel(template) }}</small>
+              <small>Modificado: {{ updatedLabel(template) }}</small>
+            </div>
+
+            <span
+              class="card-remove"
+              role="button"
+              tabindex="0"
+              aria-label="Eliminar formato"
+              (click)="remove($event, template)"
+              (keydown.enter)="remove($event, template)"
+            >
+              ✕
+            </span>
+          </button>
+        }
+      </div>
+    } @else if (templates().length === 0) {
+      <div class="empty-state">
+        <span>▤</span>
+        <strong>Aún no tienes formatos guardados</strong>
+        <small>Crea uno en blanco y guárdalo para verlo aquí.</small>
+      </div>
+    } @else {
+      <div class="empty-state">
+        <span>⌕</span>
+        <strong>Sin resultados para «{{ query() }}»</strong>
+        <small>Prueba con otro nombre.</small>
+      </div>
+    }
+  </main>
+</div>

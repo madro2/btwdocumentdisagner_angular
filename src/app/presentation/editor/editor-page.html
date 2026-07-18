@@ -1,3 +1,641 @@
 <div class="editor-shell">
-  <p>BTW Document Designer — esqueleto base</p>
+  <header class="toolbar">
+    <div class="brand">
+      <span class="brand-mark">P</span>
+      <div>
+        <strong>BTW Document Designer</strong>
+        <small>Editor de plantillas</small>
+      </div>
+    </div>
+
+    <input
+      class="template-name"
+      aria-label="Nombre de la plantilla"
+      [ngModel]="store.template().document.name"
+      (ngModelChange)="store.rename($event)"
+    />
+
+    <div class="toolbar-actions">
+      <a class="button ghost" routerLink="/">Mis formatos</a>
+      <button class="button ghost" type="button" (click)="store.createNew()">
+        Nueva
+      </button>
+      <button class="button ghost" type="button" (click)="exportJson()">
+        Exportar JSON
+      </button>
+      <button class="button primary" type="button" (click)="save()">
+        Guardar
+      </button>
+    </div>
+  </header>
+
+  <div class="page-toolbar">
+    <div class="page-control">
+      <span class="control-label">Documento</span>
+      <div class="segmented">
+        <button
+          type="button"
+          [class.active]="documentKindOf(store.template().page) === 'pdf'"
+          (click)="setDocumentKind('pdf')"
+        >
+          PDF
+        </button>
+        <button
+          type="button"
+          [class.active]="documentKindOf(store.template().page) === 'pos'"
+          (click)="setDocumentKind('pos')"
+        >
+          Tirilla POS
+        </button>
+      </div>
+    </div>
+
+    <div class="page-control">
+      <span class="control-label">Tamaño</span>
+      <select
+        aria-label="Tamaño de la hoja"
+        [value]="store.template().page.size"
+        (change)="setPageFormat($event)"
+      >
+        @for (option of formatOptions(); track option.id) {
+          <option [value]="option.id">{{ option.label }}</option>
+        }
+      </select>
+    </div>
+
+    @if (documentKindOf(store.template().page) === 'pdf') {
+      <div class="page-control">
+        <span class="control-label">Orientación</span>
+        <select
+          aria-label="Orientación de la hoja"
+          [value]="store.template().page.orientation"
+          (change)="setOrientation($event)"
+        >
+          <option value="portrait">Vertical</option>
+          <option value="landscape">Horizontal</option>
+        </select>
+      </div>
+    } @else {
+      <div class="page-control">
+        <span class="control-label">Alto (mm)</span>
+        <input
+          class="page-height"
+          type="number"
+          min="30"
+          max="3000"
+          aria-label="Alto de la tirilla en milímetros"
+          [value]="store.template().page.heightMm"
+          (change)="updatePageHeight($event)"
+        />
+      </div>
+    }
+
+    <div class="page-control">
+      <span class="control-label">Fondo</span>
+      <input
+        class="page-background"
+        type="color"
+        aria-label="Color de fondo de la hoja"
+        [value]="store.template().page.background"
+        (input)="updatePageBackground($event)"
+      />
+    </div>
+
+    <span class="page-summary">
+      {{ store.template().page.widthMm }} × {{ store.template().page.heightMm }} mm
+    </span>
+  </div>
+
+  <main class="workspace">
+    <aside class="palette panel">
+      <div class="panel-heading">
+        <span>Componentes</span>
+        <small>Arrástralos hasta la hoja</small>
+      </div>
+
+      <button
+        class="palette-item"
+        type="button"
+        draggable="true"
+        (dragstart)="startPaletteDrag($event, 'text')"
+        (click)="add('text')"
+      >
+        <span class="item-icon text-icon">T</span>
+        <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
+      </button>
+
+      <button
+        class="palette-item"
+        type="button"
+        draggable="true"
+        (dragstart)="startPaletteDrag($event, 'image')"
+        (click)="add('image')"
+      >
+        <span class="item-icon">▧</span>
+        <span><strong>Imagen</strong><small>Logo o código QR</small></span>
+      </button>
+
+      <button
+        class="palette-item"
+        type="button"
+        draggable="true"
+        (dragstart)="startPaletteDrag($event, 'container')"
+        (click)="add('container')"
+      >
+        <span class="item-icon">□</span>
+        <span><strong>Contenedor</strong><small>Agrupa contenido</small></span>
+      </button>
+
+      <div class="palette-table">
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'table')"
+          (click)="toggleTablePicker($event)"
+        >
+          <span class="item-icon">▦</span>
+          <span><strong>Tabla</strong><small>Elige columnas y filas</small></span>
+        </button>
+
+        @if (tablePickerOpen()) {
+          <div class="table-picker" (click)="$event.stopPropagation()">
+            <strong class="picker-title">
+              Tabla {{ pickerCols() }} × {{ pickerRows() }}
+            </strong>
+            <div class="picker-grid">
+              @for (row of pickerRange; track row) {
+                @for (col of pickerRange; track col) {
+                  <button
+                    class="picker-cell"
+                    type="button"
+                    [class.active]="col <= pickerCols() && row <= pickerRows()"
+                    [attr.aria-label]="'Tabla de ' + col + ' × ' + row"
+                    (mouseenter)="hoverPicker(col, row)"
+                    (click)="pickTableSize(col, row)"
+                  ></button>
+                }
+              }
+            </div>
+            <small class="picker-hint">Clic para insertar la tabla</small>
+          </div>
+        }
+      </div>
+
+      <button
+        class="palette-item"
+        type="button"
+        draggable="true"
+        (dragstart)="startPaletteDrag($event, 'link')"
+        (click)="add('link')"
+      >
+        <span class="item-icon">↗</span>
+        <span><strong>Vínculo</strong><small>Texto con URL</small></span>
+      </button>
+
+      <section class="help-card">
+        <strong>Cómo empezar</strong>
+        <ol>
+          <li>Arrastra un componente a la hoja.</li>
+          <li>Suéltalo donde lo necesites.</li>
+          <li>Configúralo a la derecha.</li>
+        </ol>
+      </section>
+    </aside>
+
+    <section class="canvas-area" (pointerdown)="store.select(null)">
+      <div
+        class="canvas-header"
+        [style.width.mm]="store.template().page.widthMm"
+      >
+        <span>
+          {{ documentKindOf(store.template().page) === 'pos' ? 'Tirilla' : 'Hoja' }}
+          · {{ store.template().page.widthMm }} ×
+          {{ store.template().page.heightMm }} mm
+        </span>
+        <span>{{ store.template().components.length }} componentes</span>
+      </div>
+
+      <ng-template #elementTemplate let-element let-parentId="parentId">
+          <div
+            class="pdf-element"
+            [class.selected]="store.selectedId() === element.id"
+            [class.container-element]="element.type === 'container'"
+            [class.child-element]="parentId"
+            [style.left.mm]="element.position.x"
+            [style.top.mm]="element.position.y"
+            [style.width.mm]="element.position.width"
+            [style.height.mm]="element.position.height"
+            [style.background]="element.style?.background ?? 'transparent'"
+            [style.border-color]="element.style?.border?.color ?? 'transparent'"
+            [style.border-width.px]="element.style?.border?.widthPt ?? 0"
+            [style.padding.mm]="element.style?.padding ?? 0"
+            (pointerdown)="startInteraction($event, element, 'move')"
+            (click)="select($event, element)"
+            (dragover)="element.type === 'container' && allowContainerDrop($event)"
+            (drop)="element.type === 'container' && dropOnContainer($event, element)"
+          >
+            @if (element.type === 'text') {
+              <div
+                class="text-content"
+                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+                [style.font-size.pt]="element.style?.fontSizePt ?? 10"
+                [style.font-weight]="element.style?.bold ? 700 : 400"
+                [style.color]="element.style?.color ?? '#111827'"
+                [style.text-align]="element.style?.alignment ?? 'left'"
+              >
+                {{ element.content?.value }}
+              </div>
+            }
+
+            @if (element.type === 'image') {
+              @if (element.content?.previewSrc) {
+                <img
+                  [src]="element.content?.previewSrc"
+                  alt=""
+                  [style.object-fit]="element.content?.fit ?? 'contain'"
+                />
+              } @else {
+                <div class="image-placeholder">
+                  <span>▧</span>
+                  <small>Selecciona una imagen</small>
+                </div>
+              }
+            }
+
+            @if (element.type === 'link') {
+              <div
+                class="link-content"
+                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+                [style.font-size.pt]="element.style?.fontSizePt ?? 10"
+                [style.font-weight]="element.style?.bold ? 700 : 400"
+                [style.color]="element.style?.color ?? '#1d4ed8'"
+                [style.text-align]="element.style?.alignment ?? 'left'"
+              >
+                {{ element.content?.value }}
+              </div>
+            }
+
+            @if (element.type === 'table') {
+              <table
+                class="table-content"
+                [class.borderless]="tableBorderless(element)"
+                [style.height]="element.style?.rowHeightMm ? 'auto' : '100%'"
+                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+                [style.font-size.pt]="element.style?.fontSizePt ?? 9"
+                [style.color]="element.style?.color ?? '#111827'"
+              >
+                <colgroup>
+                  @for (column of tableColumns(element); track column.id) {
+                    <col [style.width.mm]="column.widthMm ?? null" />
+                  }
+                </colgroup>
+                @if (tableHasHeader(element)) {
+                  <thead>
+                    <tr>
+                      @for (column of tableColumns(element); track column.id) {
+                        <th
+                          [style.text-align]="column.alignment ?? element.style?.header?.alignment ?? 'left'"
+                          [style.background]="element.style?.header?.background ?? null"
+                          [style.font-weight]="element.style?.header?.bold === false ? 400 : 700"
+                        >
+                          {{ column.title }}
+                        </th>
+                      }
+                    </tr>
+                  </thead>
+                }
+                <tbody>
+                  @for (row of tableBodyRows(element); track $index) {
+                    <tr [style.height.mm]="element.style?.rowHeightMm ?? null">
+                      @for (cell of row; track $index) {
+                        <td
+                          [style.text-align]="cellAlignment(element, $index)"
+                          [style.font-weight]="cellBold(element, $index) ? 700 : null"
+                        >
+                          {{ cell }}
+                        </td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+
+            @if (element.type === 'container') {
+              <span class="container-label">
+                {{ element.name }} · {{ element.components?.length ?? 0 }}
+              </span>
+
+              @for (child of element.components ?? []; track child.id) {
+                <ng-container
+                  [ngTemplateOutlet]="elementTemplate"
+                  [ngTemplateOutletContext]="{
+                    $implicit: child,
+                    parentId: element.id
+                  }"
+                />
+              }
+
+              @if (!element.components?.length) {
+                <span class="container-empty">Suelta componentes aquí</span>
+              }
+            }
+
+            @if (repeatOnFor(element) !== 'allPages') {
+              <span
+                class="event-badge"
+                [title]="'Evento de impresión: ' + repeatOnLabel(element)"
+              >
+                {{ repeatOnFor(element) === 'firstPage' ? 'P1' : 'ÚLT' }}
+              </span>
+            }
+
+            @if (store.selectedId() === element.id) {
+              <button
+                class="resize-handle"
+                type="button"
+                aria-label="Redimensionar componente"
+                (pointerdown)="startInteraction($event, element, 'resize')"
+              ></button>
+            }
+          </div>
+      </ng-template>
+
+      <div
+        class="page"
+        [style.width.mm]="store.template().page.widthMm"
+        [style.height.mm]="store.template().page.heightMm"
+        [style.background]="store.template().page.background"
+        (pointerdown)="store.select(null)"
+        (dragover)="allowDrop($event)"
+        (drop)="dropOnPage($event)"
+      >
+        @for (element of store.template().components; track element.id) {
+          <ng-container
+            [ngTemplateOutlet]="elementTemplate"
+            [ngTemplateOutletContext]="{
+              $implicit: element,
+              parentId: null
+            }"
+          />
+        }
+
+        @if (store.template().components.length === 0) {
+          <div class="empty-page">
+            <span>+</span>
+            <strong>La hoja está vacía</strong>
+            <small>Arrastra un componente desde el panel izquierdo</small>
+          </div>
+        }
+      </div>
+    </section>
+
+    <aside class="properties panel">
+      <div class="panel-heading">
+        <span>Propiedades</span>
+        <small>Configuración del elemento</small>
+      </div>
+
+      @if (store.selectedElement(); as selected) {
+        <section class="property-section">
+          <div class="selected-summary">
+            <span class="item-icon">{{ iconFor(selected.type) }}</span>
+            <div>
+              <strong>{{ selected.name }}</strong>
+              <small>{{ selected.type }}</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="property-section">
+          <h3>Posición y tamaño</h3>
+          <div class="field-grid">
+            <label>X (mm)<input type="number" [value]="selected.position.x" (input)="updateNumber('x', $event)" /></label>
+            <label>Y (mm)<input type="number" [value]="selected.position.y" (input)="updateNumber('y', $event)" /></label>
+            <label>Ancho<input type="number" min="5" [value]="selected.position.width" (input)="updateNumber('width', $event)" /></label>
+            <label>Alto<input type="number" min="5" [value]="selected.position.height" (input)="updateNumber('height', $event)" /></label>
+          </div>
+        </section>
+
+        <section class="property-section">
+          <h3>Agrupación</h3>
+          <label class="field">
+            Componente padre
+            <select
+              [value]="store.selectedParentId() ?? ''"
+              (change)="changeParent($event)"
+            >
+              <option value="">Hoja (sin padre)</option>
+              @for (container of store.availableParents(); track container.id) {
+                <option [value]="container.id">{{ container.name }}</option>
+              }
+            </select>
+          </label>
+          <p class="hint">
+            Las coordenadas de un componente hijo son relativas a su contenedor.
+          </p>
+        </section>
+
+        @if (selected.type === 'text') {
+          <section class="property-section">
+            <h3>Contenido</h3>
+            <label class="field">
+              Texto
+              <textarea rows="3" [value]="selected.content?.value ?? ''" (input)="updateText($event)"></textarea>
+            </label>
+            <label class="field">
+              Ruta XML
+              <input
+                type="text"
+                placeholder="Factura.Cliente.Nombre"
+                [value]="selected.content?.dataPath ?? ''"
+                (input)="updateDataPath($event)"
+              />
+            </label>
+            <p class="hint">Ejemplo: Cliente: {{ '{{Factura.Cliente.Nombre}}' }}</p>
+          </section>
+        }
+
+        @if (selected.type === 'link') {
+          <section class="property-section">
+            <h3>Vínculo</h3>
+            <label class="field">
+              Texto
+              <textarea rows="2" [value]="selected.content?.value ?? ''" (input)="updateText($event)"></textarea>
+            </label>
+            <label class="field">
+              URL
+              <input
+                type="url"
+                placeholder="https://ejemplo.com"
+                [value]="selected.content?.url ?? ''"
+                (input)="updateUrl($event)"
+              />
+            </label>
+            <label class="field">
+              Ruta XML
+              <input
+                type="text"
+                placeholder="Factura.UrlConsulta"
+                [value]="selected.content?.dataPath ?? ''"
+                (input)="updateDataPath($event)"
+              />
+            </label>
+            <p class="hint">Si defines una ruta XML, la URL se toma del dato.</p>
+          </section>
+        }
+
+        @if (selected.type === 'table') {
+          <section class="property-section">
+            <h3>Tabla · modo {{ tableMode(selected) }}</h3>
+            @if (tableMode(selected) === 'collection') {
+              <label class="field">
+                Colección (ruta XML)
+                <input
+                  type="text"
+                  placeholder="Factura.Items"
+                  [value]="selected.content?.dataPath ?? ''"
+                  (input)="updateDataPath($event)"
+                />
+              </label>
+              <label class="field">
+                Filas de vista previa
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  [value]="tableRows(selected) ?? 2"
+                  (input)="updateRows($event)"
+                />
+              </label>
+              <p class="hint">Cada elemento de la colección genera una fila.</p>
+            } @else if (tableMode(selected) === 'fixedRows') {
+              <p class="hint">
+                Tabla de filas fijas: cada fila del contrato define su etiqueta y
+                valor.
+              </p>
+            } @else {
+              <p class="hint">
+                Tabla de registro: cada campo del contrato llena su columna.
+              </p>
+            }
+          </section>
+
+          <section class="property-section">
+            <h3>Columnas</h3>
+            @for (column of tableColumns(selected) ?? []; track column.id) {
+              <div class="column-row">
+                <input
+                  type="text"
+                  placeholder="Encabezado"
+                  aria-label="Encabezado de la columna"
+                  [value]="column.title ?? ''"
+                  (input)="updateColumn(column, 'title', $event)"
+                />
+                <input
+                  type="text"
+                  placeholder="Ruta XML"
+                  aria-label="Ruta XML de la columna"
+                  [value]="column.dataPath ?? ''"
+                  (input)="updateColumn(column, 'dataPath', $event)"
+                />
+                <button
+                  class="column-remove"
+                  type="button"
+                  aria-label="Eliminar columna"
+                  (click)="removeColumn(column)"
+                >
+                  ✕
+                </button>
+              </div>
+            }
+            <button class="format-button" type="button" (click)="addColumn()">
+              + Agregar columna
+            </button>
+          </section>
+        }
+
+        @if (selected.type === 'text' || selected.type === 'link' || selected.type === 'table') {
+          <section class="property-section">
+            <h3>Apariencia</h3>
+            <div class="field-grid">
+              <label>Tamaño (pt)<input type="number" min="6" max="72" [value]="selected.style?.fontSizePt ?? 10" (input)="updateFontSize($event)" /></label>
+              <label>Color<input type="color" [value]="selected.style?.color ?? '#111827'" (input)="updateColor('color', $event)" /></label>
+            </div>
+            @if (selected.type !== 'table') {
+              <button
+                class="format-button"
+                type="button"
+                [class.active]="selected.style?.bold"
+                (click)="toggleBold()"
+              >
+                <strong>B</strong> Negrita
+              </button>
+            }
+          </section>
+        }
+
+        @if (selected.type === 'image') {
+          <section class="property-section">
+            <h3>Imagen</h3>
+            <label class="upload">
+              <span>Seleccionar archivo</span>
+              <input type="file" accept="image/png,image/jpeg,image/svg+xml" (change)="loadImage($event)" />
+            </label>
+            <small class="hint">PNG, JPG o SVG. Para el prototipo se guarda en el JSON.</small>
+          </section>
+        }
+
+        @if (selected.type === 'container') {
+          <section class="property-section">
+            <h3>Contenedor</h3>
+            <label class="field">
+              Fondo
+              <input type="color" [value]="selected.style?.background ?? '#ffffff'" (input)="updateColor('background', $event)" />
+            </label>
+            <p class="hint">
+              Arrastra componentes sobre el contenedor o asígnalos desde
+              «Componente padre».
+            </p>
+          </section>
+        }
+
+        <section class="property-section event-section">
+          <h3>Eventos</h3>
+          <label class="field">
+            Imprimir componente
+            <select
+              [value]="repeatOnFor(selected)"
+              (change)="updateRepeatOn($event)"
+            >
+              <option value="allPages">En todas las páginas</option>
+              <option value="firstPage">Solo en la primera página</option>
+              <option value="lastPage">Solo en la última página</option>
+            </select>
+          </label>
+          <p class="hint">
+            Se guarda en <code>behavior.repeatOn</code> del contrato 2.1.
+          </p>
+        </section>
+
+        <section class="property-section danger-zone">
+          <button class="button danger" type="button" (click)="remove()">
+            Eliminar componente
+          </button>
+        </section>
+      } @else {
+        <div class="no-selection">
+          <span>↖</span>
+          <strong>Selecciona un componente</strong>
+          <small>Sus propiedades aparecerán en este panel.</small>
+        </div>
+      }
+    </aside>
+  </main>
+
+  <footer class="statusbar">
+    <span>{{ status() }}</span>
+    <span>Esquema {{ store.template().schemaVersion }} · Coordenadas en milímetros</span>
+  </footer>
 </div>
