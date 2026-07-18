@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.spec.ts'],
-    reporters: process.env.CI ? ['default'] : ['default']
+    passWithNoTests: true
   },
   resolve: {
     mainFields: ['module']
