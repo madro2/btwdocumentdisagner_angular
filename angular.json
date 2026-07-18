@@ -7,7 +7,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "BTWDocumentDesigner-frontend": {
+    "btwdocumental_btwdocumentdisagner_angular": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:class": {
@@ -82,10 +82,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "BTWDocumentDesigner-frontend:build:production"
+              "buildTarget": "btwdocumental_btwdocumentdisagner_angular:build:production"
             },
             "development": {
-              "buildTarget": "BTWDocumentDesigner-frontend:build:development"
+              "buildTarget": "btwdocumental_btwdocumentdisagner_angular:build:development"
             }
           },
           "defaultConfiguration": "development"
