@@ -5,6 +5,7 @@ on:
     branches: [master]
   pull_request:
     branches: [master]
+  workflow_dispatch:
 
 jobs:
   build-and-test:
@@ -42,7 +43,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     environment:
       name: production
-      url: http://149.130.173.73
+      url: http://149.130.173.73:9001
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,8 +100,8 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             sleep 3
-            curl -fsS http://127.0.0.1/healthz
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/)
+            curl -fsS http://127.0.0.1:9001/healthz
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9001/)
             if [ "$STATUS" != "200" ]; then
               echo "::error::Health check failed: HTTP $STATUS"
               exit 1
