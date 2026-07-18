@@ -1,0 +1,108 @@
+name: Angular CI/CD
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Build (production)
+        run: npm run build -- --configuration production --base-href=/
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: angular-dist
+          path: dist/btwdocumental_btwdocumentdisagner_angular/browser/
+          retention-days: 7
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    environment:
+      name: production
+      url: http://149.130.173.73
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (production)
+        run: npm run build -- --configuration production --base-href=/
+
+      - name: Verify build output exists
+        run: |
+          if [ ! -d "dist/btwdocumental_btwdocumentdisagner_angular/browser" ]; then
+            echo "::error::Build output not found"
+            exit 1
+          fi
+
+      - name: Copy build to server
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "dist/btwdocumental_btwdocumentdisagner_angular/browser/"
+          target: "/var/www/angular/"
+          strip_components: 0
+          rm: true
+          command_timeout: 5m
+
+      - name: Reload Nginx
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sudo /usr/sbin/nginx -t
+            sudo systemctl reload nginx
+
+      - name: Health check
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            sleep 3
+            curl -fsS http://127.0.0.1/healthz
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/)
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::Health check failed: HTTP $STATUS"
+              exit 1
+            fi
+            echo "OK: HTTP $STATUS"
