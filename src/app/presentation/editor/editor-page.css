@@ -1,0 +1,12 @@
+:host {
+  display: block;
+  height: 100vh;
+}
+
+.editor-shell {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #64748b;
+  font-size: 14px;
+}
