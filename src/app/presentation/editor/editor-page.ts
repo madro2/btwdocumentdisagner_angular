@@ -2,14 +2,16 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
+import {
+  EditorStore,
+  rectsOverlap,
+} from '../../application/editor/editor.store';
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
   CONTAINER_PRESETS,
   ContainerPresetKind,
   createContainerPreset,
 } from '../../domain/factories/block.factory';
-import { createStandardInvoiceTemplate } from '../../domain/factories/standard-invoice.factory';
 import { confirmAction, notifySuccess } from '../shared/alerts';
 import { sampleCell, withSampleData } from './sample-data';
 import {
@@ -65,6 +67,10 @@ const INDENT_STEP_MM = 4;
 const MAX_INDENT_MM = 40;
 const BULLET_PREFIXES = ['• ', '○ ', '■ ', '– '];
 const NUMBER_PREFIX_RE = /^(?:\d+|[a-z]|[ivxlcdm]+)\.\s+/i;
+const NATIONAL_INVOICE_TEMPLATE = {
+  name: 'Factura electrónica nacional',
+  version: 1,
+} as const;
 
 @Component({
   selector: 'app-editor-page',
@@ -97,14 +103,41 @@ export class EditorPage {
     if (!id) {
       const preset = this.route.snapshot.queryParamMap.get('preset');
       if (preset === 'standard-invoice') {
-        this.store.startFromTemplate(createStandardInvoiceTemplate());
-        this.status.set('Plantilla base de factura cargada');
+        this.status.set('Cargando plantilla desde la base de datos...');
+        this.store
+          .startFromSavedTemplate(
+            NATIONAL_INVOICE_TEMPLATE.name,
+            NATIONAL_INVOICE_TEMPLATE.version,
+          )
+          .subscribe({
+            next: (loaded) => {
+              if (!loaded) {
+                this.status.set(
+                  'La plantilla de factura electrónica nacional no está registrada.',
+                );
+                void this.router.navigate(['/']);
+                return;
+              }
+
+              this.bindings.configure(this.store.template());
+              this.status.set(
+                `Plantilla ${NATIONAL_INVOICE_TEMPLATE.name} v${NATIONAL_INVOICE_TEMPLATE.version} cargada`,
+              );
+            },
+            error: () => {
+              this.status.set(
+                'No fue posible cargar la plantilla desde el servidor.',
+              );
+            },
+          });
         return;
       }
 
       this.store.createNew();
 
-      const size = this.route.snapshot.queryParamMap.get('size') as PageSize | null;
+      const size = this.route.snapshot.queryParamMap.get(
+        'size',
+      ) as PageSize | null;
       if (size && size in PAGE_SIZES) {
         this.store.setPageFormat(size);
       }
@@ -281,7 +314,11 @@ export class EditorPage {
   private adjustIndent(delta: number): void {
     const selected = this.store.selectedElement();
     if (!selected || !this.paragraphToolsEnabled()) return;
-    const next = clamp((selected.style?.padding ?? 0) + delta, 0, MAX_INDENT_MM);
+    const next = clamp(
+      (selected.style?.padding ?? 0) + delta,
+      0,
+      MAX_INDENT_MM,
+    );
     this.store.updateStyle(selected.id, { padding: next });
     this.status.set('Sangría actualizada');
   }
@@ -311,7 +348,10 @@ export class EditorPage {
     const columns = this.tableColumns(element);
     const content = element.content ?? {};
 
-    if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
+    if (
+      this.tableMode(element) === 'fixedRows' &&
+      Array.isArray(content.rows)
+    ) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
           if (column.value) return withSampleData(column.value);
@@ -391,13 +431,17 @@ export class EditorPage {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const error = this.store.importContract(JSON.parse(String(reader.result)));
+        const error = this.store.importContract(
+          JSON.parse(String(reader.result)),
+        );
         if (error) {
           this.status.set(error);
           return;
         }
         this.bindings.configure(this.store.template());
-        this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
+        this.status.set(
+          `Contrato ${this.store.template().schemaVersion} importado`,
+        );
       } catch (error) {
         this.status.set(`JSON inválido: ${(error as Error).message}`);
       } finally {
@@ -515,10 +559,7 @@ export class EditorPage {
     }
   }
 
-  startContainerPresetDrag(
-    event: DragEvent,
-    kind: ContainerPresetKind,
-  ): void {
+  startContainerPresetDrag(event: DragEvent, kind: ContainerPresetKind): void {
     event.dataTransfer?.setData('application/x-container-preset-kind', kind);
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
@@ -599,9 +640,7 @@ export class EditorPage {
       'application/x-container-preset-kind',
     );
     if (presetKind) {
-      const preset = createContainerPreset(
-        presetKind as ContainerPresetKind,
-      );
+      const preset = createContainerPreset(presetKind as ContainerPresetKind);
       this.store.addPrefab(preset, dropPoint, container.id);
       this.status.set(
         `Contenedor agregado dentro de ${container.name ?? 'contenedor'}`,
@@ -621,7 +660,7 @@ export class EditorPage {
     const types = event.dataTransfer?.types;
     return Boolean(
       types?.includes('application/x-component-type') ||
-        types?.includes('application/x-container-preset-kind'),
+      types?.includes('application/x-container-preset-kind'),
     );
   }
 
@@ -754,11 +793,23 @@ export class EditorPage {
     // Solo dibuja la guía si tras resolver colisiones sigue alineado.
     const offset = this.store.getParentOffset(interaction.id);
     const guides: AlignmentGuide[] = [];
-    if (snapV && ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)) {
-      guides.push({ orientation: 'vertical', positionMm: offset.x + snapV.line });
+    if (
+      snapV &&
+      ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)
+    ) {
+      guides.push({
+        orientation: 'vertical',
+        positionMm: offset.x + snapV.line,
+      });
     }
-    if (snapH && ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)) {
-      guides.push({ orientation: 'horizontal', positionMm: offset.y + snapH.line });
+    if (
+      snapH &&
+      ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)
+    ) {
+      guides.push({
+        orientation: 'horizontal',
+        positionMm: offset.y + snapH.line,
+      });
     }
     this.alignmentGuides.set(guides);
 
@@ -774,8 +825,16 @@ export class EditorPage {
     const bounds = this.store.getElementBounds(interaction.id);
     const maxWidth = bounds.width - interaction.initialX;
     const maxHeight = bounds.height - interaction.initialY;
-    let width = clamp(interaction.initialWidth + deltaX, 5, Math.max(5, maxWidth));
-    let height = clamp(interaction.initialHeight + deltaY, 5, Math.max(5, maxHeight));
+    let width = clamp(
+      interaction.initialWidth + deltaX,
+      5,
+      Math.max(5, maxWidth),
+    );
+    let height = clamp(
+      interaction.initialHeight + deltaY,
+      5,
+      Math.max(5, maxHeight),
+    );
 
     const siblings = this.store.getSiblings(interaction.id);
     const x = interaction.initialX;
@@ -797,10 +856,7 @@ export class EditorPage {
     this.store.updatePosition(interaction.id, { width, height });
   }
 
-  updateNumber(
-    property: 'x' | 'y' | 'width' | 'height',
-    event: Event,
-  ): void {
+  updateNumber(property: 'x' | 'y' | 'width' | 'height', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
     this.store.updatePosition(selected.id, {
@@ -990,17 +1046,67 @@ export class EditorPage {
       },
       error: () => {
         this.status.set('Error al subir la imagen');
-      }
+      },
     });
   }
 
   save(): void {
-    this.store.save().subscribe(() => {
-      this.status.set('Formato guardado en el servidor');
-      notifySuccess(
-        'Formato guardado',
-        this.store.template().document.name || undefined,
-      );
+    this.store.versionSaveInfo().subscribe({
+      next: async ({ exists, latestVersion, nextVersion }) => {
+        if (exists) {
+          const confirmed = await confirmAction({
+            title: 'Se creará una nueva versión',
+            text:
+              `La última versión de este formato es la ${latestVersion}. ` +
+              `Los cambios se guardarán como versión ${nextVersion} ` +
+              'y la versión actual se conservará sin cambios.',
+            confirmText: `Crear versión ${nextVersion}`,
+          });
+          if (!confirmed) return;
+
+          this.store.saveAsNewVersion(nextVersion).subscribe({
+            next: (versionedTemplate) => {
+              this.status.set(`Nueva versión ${nextVersion} guardada`);
+              notifySuccess(
+                `Versión ${nextVersion} creada`,
+                versionedTemplate.document.name || undefined,
+              );
+              void this.router.navigate(
+                ['/editor', versionedTemplate.document.id],
+                {
+                  replaceUrl: true,
+                },
+              );
+            },
+            error: () => {
+              this.status.set(
+                `No fue posible crear la versión ${nextVersion}. Intenta nuevamente.`,
+              );
+            },
+          });
+          return;
+        }
+
+        this.store.save().subscribe({
+          next: () => {
+            this.status.set('Formato guardado en el servidor');
+            notifySuccess(
+              'Formato guardado',
+              this.store.template().document.name || undefined,
+            );
+            const newId = this.store.template().document.id;
+            void this.router.navigate(['/editor', newId], { replaceUrl: true });
+          },
+          error: () => {
+            this.status.set('No fue posible guardar el formato.');
+          },
+        });
+      },
+      error: () => {
+        this.status.set(
+          'No fue posible consultar las versiones existentes del formato.',
+        );
+      },
     });
   }
 
@@ -1037,7 +1143,10 @@ export class EditorPage {
     link.click();
     URL.revokeObjectURL(url);
     this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
-    notifySuccess('JSON exportado', `${template.document.name || 'plantilla'}.json`);
+    notifySuccess(
+      'JSON exportado',
+      `${template.document.name || 'plantilla'}.json`,
+    );
   }
 
   async remove(): Promise<void> {

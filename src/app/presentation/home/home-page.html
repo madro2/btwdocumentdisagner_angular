@@ -122,7 +122,10 @@
             </div>
 
             <div class="card-info">
-              <strong>{{ template.document.name || 'Sin título' }}</strong>
+              <strong>
+                {{ template.document.name || 'Sin título' }} · Versión
+                {{ template.document.version ?? 1 }}
+              </strong>
               <small>{{ formatLabel(template) }}</small>
               <small>{{ updatedLabel(template) }}</small>
             </div>
@@ -164,7 +167,10 @@
             </span>
 
             <span class="file-name">
-              <strong>{{ template.document.name || 'Sin título' }}</strong>
+              <strong>
+                {{ template.document.name || 'Sin título' }} · Versión
+                {{ template.document.version ?? 1 }}
+              </strong>
               <small>
                 {{ formatLabel(template) }} ·
                 {{ template.components.length }}
