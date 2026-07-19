@@ -811,6 +811,10 @@ select {
   touch-action: none;
 }
 
+.pdf-element.has-rotation {
+  overflow: visible;
+}
+
 .pdf-element:hover {
   outline: 1px dashed var(--brand-600);
   outline-offset: 1px;
@@ -821,6 +825,29 @@ select {
   overflow: visible;
   outline: 2px solid var(--brand-700);
   outline-offset: 1px;
+}
+
+.element-body {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.element-body.rotated {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+}
+
+.element-body.rotated .text-content,
+.element-body.rotated .link-content {
+  width: max-content;
+  max-width: none;
+  height: auto;
+  overflow: visible;
+  white-space: nowrap;
+  transform-origin: center center;
 }
 
 .text-content,
@@ -919,12 +946,19 @@ select {
   position: absolute;
   top: -18px;
   left: 0;
+  display: none;
   padding: 2px 6px;
   color: var(--text-on-brand);
   font-size: 9px;
   font-weight: 600;
   background: var(--brand-gradient);
   border-radius: 4px 4px 0 0;
+}
+
+/* El nombre solo se muestra al pasar el cursor o al seleccionar el componente. */
+.pdf-element:hover > .container-label,
+.pdf-element.selected > .container-label {
+  display: block;
 }
 
 .container-empty {

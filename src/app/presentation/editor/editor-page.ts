@@ -331,6 +331,23 @@ export class EditorPage {
     return element.columns ?? [];
   }
 
+  /**
+   * Ancho de columna como porcentaje del total declarado, igual que hace el
+   * backend: así la tabla siempre llena el componente sin cortarse.
+   */
+  columnWidthPercent(element: DesignComponent, column: TableColumn): number | null {
+    const columns = this.tableColumns(element);
+    const declared = columns.reduce((sum, item) => sum + Math.max(0, item.widthMm ?? 0), 0);
+    if (declared <= 0) return null;
+    return (Math.max(0, column.widthMm ?? 0) / declared) * 100;
+  }
+
+  linkPreview(element: DesignComponent): string {
+    const text = this.previewText(element);
+    const url = withSampleData(element.content?.url ?? '');
+    return text || url || 'Vínculo sin URL';
+  }
+
   /** Modo efectivo de la tabla según el contrato 2.1. */
   tableMode(element: DesignComponent): 'fixedRows' | 'record' | 'collection' {
     const mode = element.content?.mode;
@@ -835,16 +852,38 @@ export class EditorPage {
       }
     }
 
-    this.store.updatePosition(interaction.id, { width, height });
+    this.store.resizeElement(interaction.id, { width, height });
   }
 
   updateNumber(property: 'x' | 'y' | 'width' | 'height', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
-    this.store.updatePosition(selected.id, {
-      [property]: Number((event.target as HTMLInputElement).value),
+    const value = Number((event.target as HTMLInputElement).value);
+    if (property === 'width' || property === 'height') {
+      this.store.resizeElement(selected.id, { [property]: value });
+    } else {
+      this.store.updatePosition(selected.id, { [property]: value });
+    }
+    this.status.set('Cambios sin guardar');
+  }
+
+  updateRotation(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const degrees = Number((event.target as HTMLSelectElement).value) || 0;
+    this.store.updateElement(selected.id, {
+      rotationDegrees: degrees === 0 ? undefined : degrees,
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  isRotated(element: DesignComponent): boolean {
+    return (element.rotationDegrees ?? 0) !== 0;
+  }
+
+  rotationTransform(element: DesignComponent): string | null {
+    if (!this.isRotated(element)) return null;
+    return `rotate(${element.rotationDegrees}deg)`;
   }
 
   updateText(event: Event): void {
