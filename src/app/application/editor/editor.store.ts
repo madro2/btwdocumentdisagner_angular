@@ -256,6 +256,28 @@ export class EditorStore {
     }));
   }
 
+  /**
+   * Cambia el tamaño de un elemento. Si es un contenedor, sus hijos se escalan
+   * proporcionalmente para que sigan ocupando la misma zona relativa.
+   */
+  resizeElement(id: string, patch: Partial<{ width: number; height: number }>): void {
+    this.updateById(id, (element) => {
+      const width = patch.width ?? element.position.width;
+      const height = patch.height ?? element.position.height;
+      const scaleX = element.position.width > 0 ? width / element.position.width : 1;
+      const scaleY = element.position.height > 0 ? height / element.position.height : 1;
+
+      return {
+        ...element,
+        position: { ...element.position, width, height, unit: 'mm' },
+        components:
+          element.type === 'container' && element.components?.length
+            ? scaleElements(element.components, scaleX, scaleY)
+            : element.components,
+      };
+    });
+  }
+
   updateStyle(id: string, patch: Partial<ComponentStyle>): void {
     this.updateById(id, (element) => ({
       ...element,
@@ -620,6 +642,28 @@ function collectIds(elements: DesignComponent[]): string[] {
 
 function containsId(elements: DesignComponent[], id: string): boolean {
   return elements.some((element) => element.id === id || containsId(element.components ?? [], id));
+}
+
+function scaleElements(
+  elements: DesignComponent[],
+  scaleX: number,
+  scaleY: number,
+): DesignComponent[] {
+  if (scaleX === 1 && scaleY === 1) return elements;
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return elements.map((element) => ({
+    ...element,
+    position: {
+      ...element.position,
+      x: round(element.position.x * scaleX),
+      y: round(element.position.y * scaleY),
+      width: round(element.position.width * scaleX),
+      height: round(element.position.height * scaleY),
+    },
+    components: element.components?.length
+      ? scaleElements(element.components, scaleX, scaleY)
+      : element.components,
+  }));
 }
 
 function mapElements(

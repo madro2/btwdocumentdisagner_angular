@@ -354,7 +354,9 @@
           (click)="select($event, element)"
           (dragover)="element.type === 'container' && allowContainerDrop($event)"
           (drop)="element.type === 'container' && dropOnContainer($event, element)"
+          [class.has-rotation]="isRotated(element)"
         >
+          <div class="element-body" [class.rotated]="isRotated(element)">
           @if (element.type === 'text') {
             <div
               class="text-content"
@@ -364,6 +366,7 @@
               [style.color]="element.style?.color ?? '#111827'"
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
+              [style.transform]="rotationTransform(element)"
             >
               {{ previewText(element) }}
             </div>
@@ -387,6 +390,7 @@
           @if (element.type === 'link') {
             <div
               class="link-content"
+              [title]="element.content?.url ?? ''"
               [style.font-family]="element.style?.fontFamily ?? 'Arial'"
               [style.font-size.pt]="element.style?.fontSizePt ?? 10"
               [style.font-weight]="element.style?.bold ? 700 : 400"
@@ -394,7 +398,7 @@
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
             >
-              {{ previewText(element.content?.value) }}
+              {{ linkPreview(element) }}
             </div>
           }
 
@@ -444,7 +448,7 @@
             >
               <colgroup>
                 @for (column of tableColumns(element); track column.id) {
-                  <col [style.width.mm]="column.widthMm ?? null" />
+                  <col [style.width.%]="columnWidthPercent(element, column)" />
                 }
               </colgroup>
               @if (tableHasHeader(element)) {
@@ -500,6 +504,7 @@
               <span class="container-empty">Suelta componentes aquí</span>
             }
           }
+          </div>
 
           @if (repeatOnFor(element) !== 'allPages') {
             <span class="event-badge" [title]="'Evento de impresión: ' + repeatOnLabel(element)">
@@ -604,6 +609,22 @@
                 (input)="updateNumber('height', $event)"
             /></label>
           </div>
+          <label class="field" style="margin-top: 10px">
+            Rotación del contenido
+            <select
+              [value]="selected.rotationDegrees ?? 0"
+              (change)="updateRotation($event)"
+            >
+              <option value="0">0° · horizontal</option>
+              <option value="-90">-90° · vertical (como en el PDF)</option>
+              <option value="90">90° · vertical invertido</option>
+              <option value="180">180°</option>
+            </select>
+          </label>
+          <p class="hint">
+            Para la franja del proveedor tecnológico elige <strong>-90°</strong> y guarda la
+            plantilla; así el editor y el PDF quedan alineados.
+          </p>
         </section>
 
         <section class="property-section">
