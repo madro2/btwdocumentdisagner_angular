@@ -67,6 +67,18 @@ jobs:
             exit 1
           fi
 
+      - name: Clean previous deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            rm -rf /var/www/angular/browser
+            rm -f /var/www/angular/index.html /var/www/angular/main-*.js /var/www/angular/styles-*.css /var/www/angular/favicon.ico
+            ls -la /var/www/angular/
+
       - name: Copy build to server
         uses: appleboy/scp-action@master
         with:
@@ -88,10 +100,9 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo chown -R deploy:deploy /var/www/angular
-            sudo chmod -R a+rX /var/www/angular
-            sudo /usr/sbin/nginx -t
-            sudo systemctl reload nginx
+            chmod -R a+rX /var/www/angular
+            sudo -n /usr/sbin/nginx -t
+            sudo -n systemctl reload nginx
             ls -la /var/www/angular/
 
       - name: Reload Nginx
