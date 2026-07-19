@@ -48,7 +48,8 @@ export class ContractValidatorService {
     );
 
     for (const pending of contract.validation?.pendingBindings ?? []) {
-      errors.push(`Binding pendiente: ${pending}`);
+      const bindingId = typeof pending === 'object' && pending !== null ? (pending as any).id || JSON.stringify(pending) : pending;
+      errors.push(`Campo dinámico sin configurar (Binding pendiente): ${bindingId}`);
     }
     return errors;
   }

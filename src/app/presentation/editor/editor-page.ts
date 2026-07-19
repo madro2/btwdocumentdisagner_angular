@@ -1395,11 +1395,18 @@ export class EditorPage {
     notifySuccess('Formato nuevo listo');
   }
 
-  exportJson(): void {
+  async exportJson(): Promise<void> {
     const errors = this.store.validationErrors();
     if (errors.length) {
-      this.status.set(`No se puede exportar: ${errors[0]}`);
-      return;
+      const confirmed = await confirmAction({
+        title: 'El formato tiene errores',
+        text: `Error detectado: ${errors[0]}.\n¿Deseas exportarlo de todos modos?`,
+        confirmText: 'Sí, exportar',
+      });
+      if (!confirmed) {
+        this.status.set('Exportación cancelada por errores de validación.');
+        return;
+      }
     }
 
     const template = this.store.exportContract();
