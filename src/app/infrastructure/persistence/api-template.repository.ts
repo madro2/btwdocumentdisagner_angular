@@ -1,9 +1,19 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { DesignContract } from '../../domain/models/template.model';
 import { TemplateRepository } from '../../domain/ports/template.repository';
 import { environment } from '../../../environments/environment';
+
+export interface PdfDesignTemplateDto {
+  id: string;
+  documentType: string;
+  designName: string;
+  designVersion: number;
+  jsonConfiguration: string;
+  creationDate: string;
+}
 
 @Injectable({
   providedIn: 'root'
@@ -13,15 +23,27 @@ export class ApiTemplateRepository implements TemplateRepository {
   private apiUrl = `${environment.apiBaseUrl}/Designs`;
 
   list(): Observable<DesignContract[]> {
-    return this.http.get<DesignContract[]>(this.apiUrl);
+    return this.http.get<PdfDesignTemplateDto[]>(this.apiUrl).pipe(
+      map(dtos => dtos.map(dto => JSON.parse(dto.jsonConfiguration) as DesignContract))
+    );
   }
 
   load(id: string): Observable<DesignContract | null> {
-    return this.http.get<DesignContract>(`${this.apiUrl}/${id}`);
+    return this.http.get<PdfDesignTemplateDto>(`${this.apiUrl}/${id}`).pipe(
+      map(dto => dto ? (JSON.parse(dto.jsonConfiguration) as DesignContract) : null)
+    );
   }
 
   save(template: DesignContract): Observable<void> {
-    return this.http.post<void>(this.apiUrl, template);
+    const payload: PdfDesignTemplateDto = {
+      id: template.document.id,
+      documentType: template.document.type || 'document',
+      designName: template.document.name || 'Unnamed',
+      designVersion: template.document.version || 1,
+      jsonConfiguration: JSON.stringify(template),
+      creationDate: new Date().toISOString()
+    };
+    return this.http.post<void>(this.apiUrl, payload);
   }
 
   remove(id: string): Observable<void> {

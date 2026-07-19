@@ -637,15 +637,25 @@ export class EditorPage {
     const file = (event.target as HTMLInputElement).files?.[0];
     if (!selected || !file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      this.store.updateContent(selected.id, {
-        previewSrc: String(reader.result),
-        source: 'asset',
-      });
-      this.status.set('Imagen cargada; cambios sin guardar');
-    };
-    reader.readAsDataURL(file);
+    this.status.set('Subiendo imagen...');
+    this.store.uploadImage(file).subscribe({
+      next: (response) => {
+        // Obtenemos una previsualización temporal para el editor usando FileReader
+        const reader = new FileReader();
+        reader.onload = () => {
+          this.store.updateContent(selected.id, {
+            assetId: response.id,
+            previewSrc: String(reader.result),
+            source: 'asset',
+          });
+          this.status.set('Imagen cargada y guardada en el servidor');
+        };
+        reader.readAsDataURL(file);
+      },
+      error: () => {
+        this.status.set('Error al subir la imagen');
+      }
+    });
   }
 
   save(): void {
