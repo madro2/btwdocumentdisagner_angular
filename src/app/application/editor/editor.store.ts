@@ -234,12 +234,33 @@ export class EditorStore {
   private composeContract(): DesignContract {
     this.commitActivePage();
     const pages = this.pagesState();
+    const cleanPages = pages.map((entry) => ({
+      ...entry,
+      components: this.stripPreviewSrc(entry.components),
+    }));
+
     return {
       ...this.templateState(),
-      page: pages[0].page,
-      components: pages[0].components,
-      pages,
+      page: cleanPages[0].page,
+      components: cleanPages[0].components,
+      pages: cleanPages,
     };
+  }
+
+  /** Elimina el previewSrc (Base64) de las imágenes para que el JSON exportado sea ligero. */
+  private stripPreviewSrc(components: DesignComponent[] | undefined): DesignComponent[] {
+    if (!components) return [];
+    return components.map((component) => {
+      const copy = { ...component };
+      if (copy.content && 'previewSrc' in copy.content) {
+        copy.content = { ...copy.content };
+        delete copy.content.previewSrc;
+      }
+      if (copy.components?.length) {
+        copy.components = this.stripPreviewSrc(copy.components);
+      }
+      return copy;
+    });
   }
 
   /** Carga un contrato, inicializando las páginas y activando la primera. */
