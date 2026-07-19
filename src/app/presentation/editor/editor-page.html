@@ -18,6 +18,26 @@
     />
 
     <div class="toolbar-actions">
+      <button
+        class="button ghost icon-button"
+        type="button"
+        title="Deshacer (Ctrl+Z)"
+        aria-label="Deshacer"
+        [disabled]="!store.canUndo()"
+        (click)="undo()"
+      >
+        ↶
+      </button>
+      <button
+        class="button ghost icon-button"
+        type="button"
+        title="Rehacer (Ctrl+Y)"
+        aria-label="Rehacer"
+        [disabled]="!store.canRedo()"
+        (click)="redo()"
+      >
+        ↷
+      </button>
       <a class="button ghost" routerLink="/">Mis formatos</a>
       <button class="button ghost" type="button" (click)="createNew()">Nueva</button>
       <label class="button ghost">
@@ -397,7 +417,45 @@
           {{ documentKindOf(store.template().page) === 'pos' ? 'Tirilla' : 'Hoja' }}
           · {{ store.template().page.widthMm }} × {{ store.template().page.heightMm }} mm
         </span>
-        <span>{{ store.template().components.length }} componentes</span>
+        <span>
+          Página {{ store.activePageIndex() + 1 }} de {{ store.pageCount() }} ·
+          {{ store.template().components.length }} componentes
+        </span>
+      </div>
+
+      <div class="pages-bar" role="tablist" aria-label="Páginas del documento">
+        @for (pageEntry of store.pages(); track pageEntry.id; let pageIndex = $index) {
+          <div class="page-tab" [class.active]="store.activePageIndex() === pageIndex">
+            <button
+              class="page-tab-label"
+              type="button"
+              role="tab"
+              [attr.aria-selected]="store.activePageIndex() === pageIndex"
+              (click)="selectPage(pageIndex)"
+            >
+              <strong>Página {{ pageIndex + 1 }}</strong>
+              <small>
+                @if (documentKindOf(pageEntry.page) === 'pos') {
+                  Tirilla
+                } @else {
+                  {{ pageEntry.page.orientation === 'landscape' ? 'Horizontal' : 'Vertical' }}
+                }
+              </small>
+            </button>
+            @if (store.pageCount() > 1) {
+              <button
+                class="page-tab-remove"
+                type="button"
+                aria-label="Eliminar página"
+                title="Eliminar página"
+                (click)="removePage(pageIndex, $event)"
+              >
+                ✕
+              </button>
+            }
+          </div>
+        }
+        <button class="page-add" type="button" (click)="addPage()">+ Agregar página</button>
       </div>
 
       <ng-template #elementTemplate let-element let-parentId="parentId">
