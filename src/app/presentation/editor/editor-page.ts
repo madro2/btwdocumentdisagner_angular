@@ -529,11 +529,18 @@ export class EditorPage {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const error = this.store.importContract(JSON.parse(String(reader.result)));
+        const parsed = JSON.parse(String(reader.result)) as Record<string, unknown>;
+        const error = this.store.importContract(parsed);
         if (error) {
           this.status.set(error);
           return;
         }
+
+        const system = parsed['System'] || parsed['system'] || parsed['runtime'];
+        if (system && typeof system === 'object' && !Array.isArray(system)) {
+          this.bindings.setSystem(system as Record<string, unknown>);
+        }
+
         this.bindings.configure(this.store.template());
         this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
       } catch (error) {
@@ -562,7 +569,7 @@ export class EditorPage {
     reader.readAsText(file, 'utf-8');
   }
 
-  importRuntime(event: Event): void {
+  importSystem(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -572,20 +579,20 @@ export class EditorPage {
       try {
         const parsed = JSON.parse(String(reader.result)) as unknown;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          this.status.set('El runtime debe ser un objeto JSON.');
+          this.status.set('El JSON del sistema debe ser un objeto.');
           return;
         }
         const envelope = parsed as Record<string, unknown>;
-        const runtime =
-          envelope['runtime'] &&
-          typeof envelope['runtime'] === 'object' &&
-          !Array.isArray(envelope['runtime'])
-            ? (envelope['runtime'] as Record<string, unknown>)
+        const system =
+          (envelope['System'] || envelope['system'] || envelope['runtime']) &&
+          typeof (envelope['System'] || envelope['system'] || envelope['runtime']) === 'object' &&
+          !Array.isArray(envelope['System'] || envelope['system'] || envelope['runtime'])
+            ? ((envelope['System'] || envelope['system'] || envelope['runtime']) as Record<string, unknown>)
             : envelope;
-        this.bindings.setRuntime(runtime);
-        this.status.set(`Runtime cargado · ${Object.keys(runtime).length} parámetros`);
+        this.bindings.setSystem(system);
+        this.status.set(`Datos de sistema cargados · ${Object.keys(system).length} parámetros`);
       } catch (error) {
-        this.status.set(`Runtime JSON inválido: ${(error as Error).message}`);
+        this.status.set(`JSON de sistema inválido: ${(error as Error).message}`);
       } finally {
         input.value = '';
       }
@@ -1267,7 +1274,12 @@ export class EditorPage {
 
     const template = this.store.template();
     const { updatedAt: _updatedAt, ...contract } = template;
-    const blob = new Blob([JSON.stringify(contract, null, 2)], {
+    const system = this.bindings.getSystem();
+    const exportData = Object.keys(system).length > 0 
+      ? { ...contract, System: system }
+      : contract;
+      
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);

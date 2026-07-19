@@ -34,12 +34,12 @@
         />
       </label>
       <label class="button ghost">
-        Cargar runtime
+        Cargar datos del sistema
         <input
           hidden
           type="file"
           accept="application/json,.json"
-          (change)="importRuntime($event)"
+          (change)="importSystem($event)"
         />
       </label>
       <button class="button ghost" type="button" (click)="exportJson()">Exportar JSON</button>
@@ -480,7 +480,7 @@
             } @else {
               <div class="image-placeholder">
                 <span>▣</span>
-                <small>{{ element.content?.dataPath || 'Runtime.QrImage' }}</small>
+                <small>{{ element.content?.dataPath || 'System.QrImage' }}</small>
               </div>
             }
           }
