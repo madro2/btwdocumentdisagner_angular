@@ -2,7 +2,13 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+<<<<<<< HEAD
 import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
+=======
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
+import { EditorStore } from '../../application/editor/editor.store';
+>>>>>>> feat: add ERP XML proxy endpoint and UI integration
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
   CONTAINER_PRESETS,
@@ -89,6 +95,7 @@ export class EditorPage {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly dataSourceCatalog = inject(DataSourceCatalogService);
+  private readonly http = inject(HttpClient);
   private interaction: Interaction | null = null;
 
   readonly containerPresets = CONTAINER_PRESETS;
@@ -123,6 +130,8 @@ export class EditorPage {
       error: () => this.dataSourceCollections.set([]),
     });
     const id = this.route.snapshot.paramMap.get('id');
+    const xmlId = this.route.snapshot.queryParamMap.get('xmlId');
+
     if (!id) {
       const preset = this.route.snapshot.queryParamMap.get('preset');
       if (preset === 'standard-invoice') {
@@ -160,17 +169,34 @@ export class EditorPage {
         this.store.setOrientation('landscape');
       }
       this.bindings.configure(this.store.template());
-      return;
+    } else {
+      this.store.loadById(id).subscribe((loaded) => {
+        if (loaded) {
+          this.status.set('Formato cargado');
+          this.bindings.configure(this.store.template());
+        } else {
+          this.router.navigate(['/']);
+        }
+      });
     }
 
-    this.store.loadById(id).subscribe((loaded) => {
-      if (loaded) {
-        this.status.set('Formato cargado');
-        this.bindings.configure(this.store.template());
-      } else {
-        this.router.navigate(['/']);
-      }
-    });
+    if (xmlId) {
+      this.http.get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${xmlId}/XMLERP/WithPath`, { responseType: 'text' })
+        .subscribe({
+          next: (xml) => {
+            const error = this.bindings.loadXml(xml);
+            if (error) {
+              this.status.set(`Error cargando XML: ${error}`);
+            } else {
+              this.status.set(`XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`);
+            }
+          },
+          error: (err) => {
+            this.status.set('Error descargando XML desde el ERP');
+            console.error(err);
+          }
+        });
+    }
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
