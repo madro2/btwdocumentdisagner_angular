@@ -14,6 +14,7 @@ interface StarterTemplate {
   label: string;
   size: PageSize;
   orientation?: PageOrientation;
+  preset?: 'standard-invoice';
 }
 
 @Component({
@@ -29,6 +30,11 @@ export class HomePage {
   readonly view = signal<'list' | 'grid'>('list');
 
   readonly starters: StarterTemplate[] = [
+    {
+      label: 'Factura electrónica',
+      size: 'A4',
+      preset: 'standard-invoice',
+    },
     { label: 'Documento A4', size: 'A4' },
     { label: 'A4 horizontal', size: 'A4', orientation: 'landscape' },
     { label: 'Carta', size: 'Letter' },
@@ -62,6 +68,7 @@ export class HomePage {
       queryParams: {
         size: starter.size,
         ...(starter.orientation ? { orientation: starter.orientation } : {}),
+        ...(starter.preset ? { preset: starter.preset } : {}),
       },
     });
   }

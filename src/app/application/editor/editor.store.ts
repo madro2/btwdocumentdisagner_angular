@@ -50,6 +50,18 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
+  startFromTemplate(template: DesignContract): void {
+    this.templateState.set({
+      ...template,
+      document: {
+        ...template.document,
+        id: crypto.randomUUID(),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.selectedIdState.set(null);
+  }
+
   rename(name: string): void {
     this.templateState.update((template) => ({
       ...template,
@@ -94,7 +106,23 @@ export class EditorStore {
     parentId: string | null = null,
     tableSize?: TableSize,
   ): void {
-    const element = createElement(type, tableSize);
+    this.insertElement(createElement(type, tableSize), position, parentId);
+  }
+
+  /** Inserta un componente ya construido (por ejemplo un bloque prediseñado). */
+  addPrefab(
+    element: DesignComponent,
+    position?: { x: number; y: number },
+    parentId: string | null = null,
+  ): void {
+    this.insertElement(element, position, parentId);
+  }
+
+  private insertElement(
+    element: DesignComponent,
+    position: { x: number; y: number } | undefined,
+    parentId: string | null,
+  ): void {
     const bounds = this.getParentBounds(parentId);
     element.position.width = Math.min(element.position.width, bounds.width);
     element.position.height = Math.min(element.position.height, bounds.height);

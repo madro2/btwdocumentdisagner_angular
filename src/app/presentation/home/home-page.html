@@ -31,13 +31,21 @@
             <span
               class="starter-page"
               [class.pos-page]="isStarterPos(starter)"
+              [class.invoice-page]="starter.preset === 'standard-invoice'"
               [style.width.px]="starterDims(starter).width"
               [style.height.px]="starterDims(starter).height"
             >
-              <span class="skeleton-line title"></span>
-              <span class="skeleton-line"></span>
-              <span class="skeleton-line"></span>
-              <span class="skeleton-line short"></span>
+              @if (starter.preset === 'standard-invoice') {
+                <span class="invoice-preview-header"></span>
+                <span class="invoice-preview-info"></span>
+                <span class="invoice-preview-table"></span>
+                <span class="invoice-preview-total"></span>
+              } @else {
+                <span class="skeleton-line title"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line"></span>
+                <span class="skeleton-line short"></span>
+              }
             </span>
           </span>
           <small>{{ starter.label }}</small>

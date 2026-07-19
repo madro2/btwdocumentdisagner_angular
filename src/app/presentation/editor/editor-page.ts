@@ -3,12 +3,20 @@ import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
+import {
+  CONTAINER_PRESETS,
+  ContainerPresetKind,
+  createContainerPreset,
+} from '../../domain/factories/block.factory';
+import { createStandardInvoiceTemplate } from '../../domain/factories/standard-invoice.factory';
 import { confirmAction, notifySuccess } from '../shared/alerts';
+import { sampleCell, withSampleData } from './sample-data';
 import {
   ComponentType,
   DesignComponent,
   DocumentKind,
   documentKindOf,
+  FixedTableRow,
   PAGE_SIZES,
   PageOrientation,
   PageSize,
@@ -65,11 +73,13 @@ export class EditorPage {
   readonly store = inject(EditorStore);
   readonly status = signal('Borrador sin guardar');
   readonly documentKindOf = documentKindOf;
+  readonly previewText = withSampleData;
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private interaction: Interaction | null = null;
 
+  readonly containerPresets = CONTAINER_PRESETS;
   readonly pickerRange = Array.from({ length: 8 }, (_, index) => index + 1);
   readonly tablePickerOpen = signal(false);
   readonly pickerCols = signal(4);
@@ -82,6 +92,13 @@ export class EditorPage {
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
+      const preset = this.route.snapshot.queryParamMap.get('preset');
+      if (preset === 'standard-invoice') {
+        this.store.startFromTemplate(createStandardInvoiceTemplate());
+        this.status.set('Plantilla base de factura cargada');
+        return;
+      }
+
       this.store.createNew();
 
       const size = this.route.snapshot.queryParamMap.get('size') as PageSize | null;
@@ -290,9 +307,10 @@ export class EditorPage {
     if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
-          if (column.value) return column.value;
-          if (index === 0) return row.label ?? '';
-          return row.value ?? row.dataPath ?? '';
+          if (column.value) return withSampleData(column.value);
+          if (index === 0) return withSampleData(row.label);
+          if (row.value) return withSampleData(row.value);
+          return row.dataPath ? withSampleData(`{{${row.dataPath}}}`) : '';
         }),
       );
     }
@@ -302,14 +320,20 @@ export class EditorPage {
       return [
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
-          return field?.value ?? field?.dataPath ?? '—';
+          if (field?.value) return withSampleData(field.value);
+          return field?.dataPath
+            ? withSampleData(`{{${field.dataPath}}}`)
+            : '—';
         }),
       ];
     }
 
+    const rowAlias = content.rowAlias;
     return Array.from({ length: this.tableRows(element) }, (_, rowIndex) =>
       columns.map((column) =>
-        rowIndex === 0 ? column.value || column.dataPath || '—' : '',
+        column.value
+          ? column.value
+          : sampleCell(rowAlias, column.dataPath, rowIndex),
       ),
     );
   }
@@ -371,16 +395,31 @@ export class EditorPage {
     }
   }
 
+  startContainerPresetDrag(
+    event: DragEvent,
+    kind: ContainerPresetKind,
+  ): void {
+    event.dataTransfer?.setData('application/x-container-preset-kind', kind);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'copy';
+    }
+  }
+
+  addContainerPreset(kind: ContainerPresetKind): void {
+    const container = createContainerPreset(kind);
+    this.store.addPrefab(container);
+    this.status.set(`Contenedor "${container.name}" agregado`);
+  }
+
   allowDrop(event: DragEvent): void {
-    if (event.dataTransfer?.types.includes('application/x-component-type')) {
+    if (this.hasPaletteData(event)) {
       event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
+      event.dataTransfer!.dropEffect = 'copy';
     }
   }
 
   dropOnPage(event: DragEvent): void {
-    const type = event.dataTransfer?.getData('application/x-component-type');
-    if (!type) return;
+    if (!this.hasPaletteData(event)) return;
 
     event.preventDefault();
     const page = event.currentTarget as HTMLElement;
@@ -389,27 +428,41 @@ export class EditorPage {
       rect.width / (this.store.template().page.widthMm * CSS_MM_IN_PX);
     const scaleY =
       rect.height / (this.store.template().page.heightMm * CSS_MM_IN_PX);
-
-    this.store.addElement(type as ComponentType, {
+    const dropPoint = {
       x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
       y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
-    });
+    };
+
+    const presetKind = event.dataTransfer?.getData(
+      'application/x-container-preset-kind',
+    );
+    if (presetKind) {
+      const container = createContainerPreset(
+        presetKind as ContainerPresetKind,
+      );
+      this.store.addPrefab(container, dropPoint);
+      this.status.set(`Contenedor "${container.name}" agregado`);
+      return;
+    }
+
+    const type = event.dataTransfer?.getData('application/x-component-type');
+    if (!type) return;
+    this.store.addElement(type as ComponentType, dropPoint);
     this.status.set('Cambios sin guardar');
   }
 
   allowContainerDrop(event: DragEvent): void {
-    if (!event.dataTransfer?.types.includes('application/x-component-type')) {
+    if (!this.hasPaletteData(event)) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = 'copy';
+    event.dataTransfer!.dropEffect = 'copy';
   }
 
   dropOnContainer(event: DragEvent, container: DesignComponent): void {
-    const type = event.dataTransfer?.getData('application/x-component-type');
-    if (!type) return;
+    if (!this.hasPaletteData(event)) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -417,17 +470,38 @@ export class EditorPage {
     const rect = target.getBoundingClientRect();
     const scaleX = rect.width / (container.position.width * CSS_MM_IN_PX);
     const scaleY = rect.height / (container.position.height * CSS_MM_IN_PX);
+    const dropPoint = {
+      x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
+      y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
+    };
 
-    this.store.addElement(
-      type as ComponentType,
-      {
-        x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
-        y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
-      },
-      container.id,
+    const presetKind = event.dataTransfer?.getData(
+      'application/x-container-preset-kind',
     );
+    if (presetKind) {
+      const preset = createContainerPreset(
+        presetKind as ContainerPresetKind,
+      );
+      this.store.addPrefab(preset, dropPoint, container.id);
+      this.status.set(
+        `Contenedor agregado dentro de ${container.name ?? 'contenedor'}`,
+      );
+      return;
+    }
+
+    const type = event.dataTransfer?.getData('application/x-component-type');
+    if (!type) return;
+    this.store.addElement(type as ComponentType, dropPoint, container.id);
     this.status.set(
       `Componente agregado dentro de ${container.name ?? 'contenedor'}`,
+    );
+  }
+
+  private hasPaletteData(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return Boolean(
+      types?.includes('application/x-component-type') ||
+        types?.includes('application/x-container-preset-kind'),
     );
   }
 
@@ -631,6 +705,50 @@ export class EditorPage {
       url: (event.target as HTMLInputElement).value,
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  fixedRows(element: DesignComponent): FixedTableRow[] {
+    const rows = element.content?.rows;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  updateFixedRow(
+    index: number,
+    property: 'label' | 'dataPath',
+    event: Event,
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const value = (event.target as HTMLInputElement).value;
+    this.store.updateContent(selected.id, {
+      rows: this.fixedRows(selected).map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [property]: value } : row,
+      ),
+    });
+    this.status.set('Cambios sin guardar');
+  }
+
+  addFixedRow(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateContent(selected.id, {
+      rows: [...this.fixedRows(selected), { label: 'CONCEPTO', dataPath: '' }],
+    });
+    this.status.set('Fila agregada');
+  }
+
+  removeFixedRow(index: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateContent(selected.id, {
+      rows: this.fixedRows(selected).filter(
+        (_, rowIndex) => rowIndex !== index,
+      ),
+    });
+    this.status.set('Fila eliminada');
   }
 
   addColumn(): void {
