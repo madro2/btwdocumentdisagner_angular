@@ -2,13 +2,9 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-<<<<<<< HEAD
-import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
-=======
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
-import { EditorStore } from '../../application/editor/editor.store';
->>>>>>> feat: add ERP XML proxy endpoint and UI integration
+import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
   CONTAINER_PRESETS,
