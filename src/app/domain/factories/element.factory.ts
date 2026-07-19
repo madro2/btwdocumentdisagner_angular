@@ -62,12 +62,13 @@ export function createElement(
     case 'table': {
       const columnCount = tableSize?.columns ?? 2;
       const rows = tableSize?.rows ?? 2;
+      const tableWidth = Math.max(60, Math.min(30 * columnCount, 190));
       const columns: TableColumn[] = Array.from(
         { length: columnCount },
         (_, index) => ({
           id: `col-${index + 1}`,
           title: `Columna ${index + 1}`,
-          widthMm: 30,
+          widthMm: tableWidth / columnCount,
           dataPath: '',
         }),
       );
@@ -77,7 +78,7 @@ export function createElement(
         name: `Tabla ${columnCount} × ${rows}`,
         position: {
           ...base.position,
-          width: Math.max(60, Math.min(30 * columnCount, 190)),
+          width: tableWidth,
           height: Math.max(20, 8 * (rows + 1)),
         },
         content: {
@@ -158,6 +159,21 @@ export function createElement(
             radiusMm: 1.5,
           },
         },
+      };
+    case 'barcode':
+      return {
+        ...base,
+        name: 'Código de barras',
+        position: { ...base.position, width: 60, height: 18 },
+        content: { mode: 'dynamic', dataPath: '' },
+        properties: { format: 'CODE128' },
+      };
+    case 'pageBreak':
+      return {
+        ...base,
+        name: 'Salto de página',
+        position: { ...base.position, width: 1, height: 1 },
+        behavior: { mode: 'flow' },
       };
   }
 }

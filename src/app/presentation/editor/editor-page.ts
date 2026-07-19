@@ -3,6 +3,7 @@ import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { EditorStore } from '../../application/editor/editor.store';
+import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
   ComponentType,
   DesignComponent,
@@ -25,6 +26,8 @@ const TYPE_ICONS: Record<ComponentType, string> = {
   pageNumber: '#',
   line: '—',
   rectangle: '▭',
+  barcode: '▥',
+  pageBreak: '↡',
 };
 
 type InteractionMode = 'move' | 'resize';
@@ -52,6 +55,7 @@ export class EditorPage {
   readonly store = inject(EditorStore);
   readonly status = signal('Borrador sin guardar');
   readonly documentKindOf = documentKindOf;
+  private readonly bindings = inject(BindingEvaluatorService);
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -66,12 +70,14 @@ export class EditorPage {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
       this.store.createNew();
+      this.bindings.configure(this.store.template());
       return;
     }
 
     this.store.loadById(id).subscribe((loaded) => {
       if (loaded) {
         this.status.set('Formato cargado');
+        this.bindings.configure(this.store.template());
       } else {
         this.router.navigate(['/']);
       }
@@ -194,11 +200,130 @@ export class EditorPage {
       ];
     }
 
+    const collectionPath = content.collectionPath ?? content.dataPath;
+    const records = collectionPath
+      ? this.bindings.collection(collectionPath)
+      : [];
+    if (records.length) {
+      const alias = content.rowAlias ?? 'Row';
+      return records.map((record) =>
+        columns.map((column) =>
+          this.bindings.render(
+            column.value ?? (column.dataPath ? `{{${column.dataPath}}}` : ''),
+            { aliases: { [alias]: record } },
+            {},
+            column.defaultValue ?? '',
+          ),
+        ),
+      );
+    }
+
     return Array.from({ length: this.tableRows(element) }, (_, rowIndex) =>
       columns.map((column) =>
         rowIndex === 0 ? column.value || column.dataPath || '—' : '',
       ),
     );
+  }
+
+  createNew(): void {
+    this.store.createNew();
+    this.bindings.configure(this.store.template());
+    this.status.set('Nuevo contrato 3.0');
+  }
+
+  previewText(element: DesignComponent): string {
+    return this.bindings.render(
+      element.content?.value,
+      {},
+      element.content?.bindings,
+      String(element.content?.defaultValue ?? ''),
+    );
+  }
+
+  previewImageSource(element: DesignComponent): string | null {
+    const path = element.content?.dataPath;
+    const value = path ? this.bindings.resolve(path) : null;
+    if (typeof value !== 'string' || !value) return null;
+    if (value.startsWith('data:image/')) return value;
+    if (value.startsWith('/9j/')) return `data:image/jpeg;base64,${value}`;
+    if (value.startsWith('iVBOR')) return `data:image/png;base64,${value}`;
+    if (value.startsWith('R0lGOD')) return `data:image/gif;base64,${value}`;
+    return null;
+  }
+
+  importJson(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const error = this.store.importContract(JSON.parse(String(reader.result)));
+        if (error) {
+          this.status.set(error);
+          return;
+        }
+        this.bindings.configure(this.store.template());
+        this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
+      } catch (error) {
+        this.status.set(`JSON inválido: ${(error as Error).message}`);
+      } finally {
+        input.value = '';
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  importXml(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      this.bindings.configure(this.store.template());
+      const error = this.bindings.loadXml(String(reader.result));
+      this.status.set(
+        error ??
+          `XML cargado · ${this.bindings.availablePaths().length} rutas disponibles`,
+      );
+      input.value = '';
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  importRuntime(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result)) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          this.status.set('El runtime debe ser un objeto JSON.');
+          return;
+        }
+        const envelope = parsed as Record<string, unknown>;
+        const runtime =
+          envelope['runtime'] &&
+          typeof envelope['runtime'] === 'object' &&
+          !Array.isArray(envelope['runtime'])
+            ? (envelope['runtime'] as Record<string, unknown>)
+            : envelope;
+        this.bindings.setRuntime(runtime);
+        this.status.set(
+          `Runtime cargado · ${Object.keys(runtime).length} parámetros`,
+        );
+      } catch (error) {
+        this.status.set(`Runtime JSON inválido: ${(error as Error).message}`);
+      } finally {
+        input.value = '';
+      }
+    };
+    reader.readAsText(file, 'utf-8');
   }
 
   cellAlignment(element: DesignComponent, columnIndex: number): string {
@@ -530,6 +655,12 @@ export class EditorPage {
   }
 
   exportJson(): void {
+    const errors = this.store.validationErrors();
+    if (errors.length) {
+      this.status.set(`No se puede exportar: ${errors[0]}`);
+      return;
+    }
+
     const template = this.store.template();
     const { updatedAt: _updatedAt, ...contract } = template;
     const blob = new Blob([JSON.stringify(contract, null, 2)], {
@@ -541,7 +672,7 @@ export class EditorPage {
     link.download = `${template.document.name || 'plantilla'}.json`;
     link.click();
     URL.revokeObjectURL(url);
-    this.status.set('Contrato JSON 2.1 exportado');
+    this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
   }
 
   remove(): void {
