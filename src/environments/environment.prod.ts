@@ -1,4 +1,4 @@
 export const environment = {
   production: true,
-  apiBaseUrl: 'https://localhost:51198/DocumentDesignerApi'
+  apiBaseUrl: 'http://149.130.173.73:5005/DocumentDesignerApi'
 };
