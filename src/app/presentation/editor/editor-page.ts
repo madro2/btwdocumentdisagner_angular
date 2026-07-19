@@ -143,6 +143,7 @@ export class EditorPage {
               }
 
               this.bindings.configure(this.store.template());
+              this.loadXmlFromErp(xmlId);
               this.status.set(
                 `Plantilla ${NATIONAL_INVOICE_TEMPLATE.name} v${NATIONAL_INVOICE_TEMPLATE.version} cargada`,
               );
@@ -165,34 +166,44 @@ export class EditorPage {
         this.store.setOrientation('landscape');
       }
       this.bindings.configure(this.store.template());
+      this.loadXmlFromErp(xmlId);
     } else {
       this.store.loadById(id).subscribe((loaded) => {
         if (loaded) {
           this.status.set('Formato cargado');
           this.bindings.configure(this.store.template());
+          this.loadXmlFromErp(xmlId);
         } else {
           this.router.navigate(['/']);
         }
       });
     }
+  }
 
-    if (xmlId) {
-      this.http.get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${xmlId}/XMLERP/WithPath`, { responseType: 'text' })
-        .subscribe({
-          next: (xml) => {
-            const error = this.bindings.loadXml(xml);
-            if (error) {
-              this.status.set(`Error cargando XML: ${error}`);
-            } else {
-              this.status.set(`XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`);
-            }
-          },
-          error: (err) => {
-            this.status.set('Error descargando XML desde el ERP');
-            console.error(err);
+  private loadXmlFromErp(xmlId: string | null): void {
+    if (!xmlId) return;
+
+    const encodedXmlId = encodeURIComponent(xmlId);
+    this.http
+      .get(
+        `${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodedXmlId}/XMLERP/WithPath`,
+        { responseType: 'text' },
+      )
+      .subscribe({
+        next: (xml) => {
+          const error = this.bindings.loadXml(xml);
+          if (error) {
+            this.status.set(`Error cargando XML: ${error}`);
+          } else {
+            this.status.set(
+              `XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`,
+            );
           }
-        });
-    }
+        },
+        error: () => {
+          this.status.set('Error descargando XML desde el ERP');
+        },
+      });
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
