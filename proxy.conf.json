@@ -1,0 +1,7 @@
+{
+  "/DocumentDesignerApi": {
+    "target": "https://localhost:51198",
+    "secure": false,
+    "changeOrigin": true
+  }
+}

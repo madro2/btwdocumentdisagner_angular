@@ -1,8 +1,9 @@
+import { Observable } from 'rxjs';
 import { DesignContract } from '../models/template.model';
 
 export interface TemplateRepository {
-  list(): DesignContract[];
-  load(id: string): DesignContract | null;
-  save(template: DesignContract): void;
-  remove(id: string): void;
+  list(): Observable<DesignContract[]>;
+  load(id: string): Observable<DesignContract | null>;
+  save(template: DesignContract): Observable<void>;
+  remove(id: string): Observable<void>;
 }

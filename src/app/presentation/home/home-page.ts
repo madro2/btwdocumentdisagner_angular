@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { EditorStore } from '../../application/editor/editor.store';
 import {
@@ -22,7 +22,7 @@ interface StarterTemplate {
   templateUrl: './home-page.html',
   styleUrl: './home-page.css',
 })
-export class HomePage {
+export class HomePage implements OnInit {
   private readonly store = inject(EditorStore);
   private readonly router = inject(Router);
 
@@ -37,12 +37,12 @@ export class HomePage {
     },
     { label: 'Documento A4', size: 'A4' },
     { label: 'A4 horizontal', size: 'A4', orientation: 'landscape' },
-    { label: 'Carta', size: 'Letter' },
-    { label: 'Oficio', size: 'Legal' },
+    { label: 'Carta', size: 'LETTER' },
+    { label: 'Oficio', size: 'LEGAL' },
     { label: 'Tirilla POS 80 mm', size: 'POS80' },
     { label: 'Tirilla POS 58 mm', size: 'POS58' },
   ];
-  readonly templates = signal<DesignContract[]>(this.store.listTemplates());
+  readonly templates = signal<DesignContract[]>([]);
   readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();
     if (!query) return this.templates();
@@ -50,6 +50,14 @@ export class HomePage {
       template.document.name.toLowerCase().includes(query),
     );
   });
+
+  ngOnInit(): void {
+    this.loadTemplates();
+  }
+
+  private loadTemplates(): void {
+    this.store.listTemplates().subscribe(t => this.templates.set(t));
+  }
 
   search(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
@@ -106,9 +114,10 @@ export class HomePage {
     });
     if (!confirmed) return;
 
-    this.store.removeTemplate(template.document.id);
-    this.templates.set(this.store.listTemplates());
-    notifySuccess('Formato eliminado');
+    this.store.removeTemplate(template.document.id).subscribe(() => {
+      this.loadTemplates();
+      notifySuccess('Formato eliminado');
+    });
   }
 
   formatLabel(template: DesignContract): string {

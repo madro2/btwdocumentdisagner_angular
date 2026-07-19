@@ -1173,3 +1173,16 @@ input[type='color'] {
   background: #16a34a;
   box-shadow: 0 0 0 3px rgb(22 163 74 / 15%);
 }
+.line-content {
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px solid;
+}
+
+.page-break-content {
+  width: 100%;
+  border-top: 1px dashed #64748b;
+  color: #475569;
+  font-size: 8pt;
+  text-align: center;
+}
