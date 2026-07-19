@@ -14,6 +14,8 @@
       <input
         type="text"
         autocomplete="off"
+        maxlength="128"
+        spellcheck="false"
         placeholder="Ingresa el CUFE hexadecimal"
         [value]="cufe()"
         (input)="updateCufe($event)"
@@ -41,7 +43,7 @@
     </div>
 
     @if (status()) {
-      <p class="status">{{ status() }}</p>
+      <p class="status" role="status" aria-live="polite">{{ status() }}</p>
     }
   </section>
 
