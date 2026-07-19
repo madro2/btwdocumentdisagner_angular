@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import {
   BindingDefinition,
   DesignContract,
@@ -10,9 +10,10 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class BindingEvaluatorService {
-  private readonly xml = inject(XmlDataSourceService);
   private readonly contractState = signal<DesignContract | null>(null);
   private readonly runtimeState = signal<Record<string, unknown>>({});
+
+  constructor(private readonly xml: XmlDataSourceService) {}
 
   configure(contract: DesignContract): void {
     this.contractState.set(contract);
@@ -29,6 +30,10 @@ export class BindingEvaluatorService {
 
   availablePaths(): string[] {
     return this.xml.paths();
+  }
+
+  hasLoadedXml(): boolean {
+    return this.xml.document() !== null;
   }
 
   collection(path: string): Element[] {

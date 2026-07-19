@@ -20,6 +20,7 @@ import {
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
 import { ContractValidatorService } from '../validation/contract-validator.service';
+import { DataSourceFieldBinding, withDataSourceBinding } from './data-source-binding';
 import { calculateVersionSaveInfo, VersionSaveInfo } from './versioning';
 
 @Injectable({ providedIn: 'root' })
@@ -168,12 +169,7 @@ export class EditorStore {
   }
 
   addDataSourceField(
-    field: {
-      name: string;
-      displayName: string;
-      description: string;
-      path: string;
-    },
+    field: DataSourceFieldBinding,
     position?: { x: number; y: number },
     parentId: string | null = null,
   ): void {
@@ -188,11 +184,26 @@ export class EditorStore {
     };
     element.properties = {
       ...(element.properties ?? {}),
+      dataSourceFieldId: field.id,
+      dataSourceCollectionId: field.collectionId,
+      dataSourceCollectionName: field.collectionName,
       dataSourceFieldName: field.name,
       dataSourceFieldDescription: field.description,
       dataSourcePath: field.path,
     };
     this.insertElement(element, position, parentId);
+  }
+
+  bindDataSourceField(id: string, field: DataSourceFieldBinding): boolean {
+    const element = findElement(this.templateState().components, id);
+    if (!element) return false;
+
+    const boundElement = withDataSourceBinding(element, field);
+    if (!boundElement) return false;
+
+    this.updateById(id, () => boundElement);
+    this.selectedIdState.set(id);
+    return true;
   }
 
   private insertElement(
