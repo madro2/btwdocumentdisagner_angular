@@ -10,20 +10,22 @@ import {
 } from '../../domain/models/template.model';
 import { TemplateRepository } from '../../domain/ports/template.repository';
 
+import { Observable, of } from 'rxjs';
+
 const STORAGE_KEY = 'pdf-designer.templates';
 const LEGACY_DRAFT_KEY = 'pdf-designer.template-draft';
 
 @Injectable()
 export class LocalTemplateRepository implements TemplateRepository {
-  list(): DesignContract[] {
-    return this.read();
+  list(): Observable<DesignContract[]> {
+    return of(this.read());
   }
 
-  load(id: string): DesignContract | null {
-    return this.read().find((template) => template.document.id === id) ?? null;
+  load(id: string): Observable<DesignContract | null> {
+    return of(this.read().find((template) => template.document.id === id) ?? null);
   }
 
-  save(template: DesignContract): void {
+  save(template: DesignContract): Observable<void> {
     const templates = this.read();
     const index = templates.findIndex(
       (item) => item.document.id === template.document.id,
@@ -36,15 +38,17 @@ export class LocalTemplateRepository implements TemplateRepository {
     }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+    return of(undefined);
   }
 
-  remove(id: string): void {
+  remove(id: string): Observable<void> {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(
         this.read().filter((template) => template.document.id !== id),
       ),
     );
+    return of(undefined);
   }
 
   private read(): DesignContract[] {

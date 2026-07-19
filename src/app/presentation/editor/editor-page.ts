@@ -69,11 +69,13 @@ export class EditorPage {
       return;
     }
 
-    if (this.store.loadById(id)) {
-      this.status.set('Formato cargado');
-    } else {
-      this.router.navigate(['/']);
-    }
+    this.store.loadById(id).subscribe((loaded) => {
+      if (loaded) {
+        this.status.set('Formato cargado');
+      } else {
+        this.router.navigate(['/']);
+      }
+    });
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
@@ -522,8 +524,9 @@ export class EditorPage {
   }
 
   save(): void {
-    this.store.save();
-    this.status.set('Formato guardado localmente');
+    this.store.save().subscribe(() => {
+      this.status.set('Formato guardado en el servidor');
+    });
   }
 
   exportJson(): void {
