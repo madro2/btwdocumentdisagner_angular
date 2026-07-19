@@ -95,6 +95,27 @@ input {
   font-size: 13px;
 }
 
+.demo-link {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  color: var(--text-on-brand);
+  font-weight: 650;
+  cursor: pointer;
+  background: rgb(255 255 255 / 14%);
+  border: 1px solid rgb(255 255 255 / 36%);
+  border-radius: 999px;
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
+}
+
+.demo-link:hover {
+  background: rgb(255 255 255 / 22%);
+  transform: translateY(-1px);
+}
+
 /* ─── Sección «Nueva» (galería de inicio) ─── */
 
 .new-section {
@@ -212,23 +233,14 @@ input {
 
 .invoice-preview-info {
   height: 20%;
-  background: linear-gradient(
-    90deg,
-    transparent 0 58%,
-    var(--border) 58% 59%,
-    transparent 59%
-  );
+  background: linear-gradient(90deg, transparent 0 58%, var(--border) 58% 59%, transparent 59%);
 }
 
 .invoice-preview-table {
   height: 34%;
   background:
     linear-gradient(var(--brand-100) 0 17%, transparent 17%),
-    repeating-linear-gradient(
-      0deg,
-      transparent 0 7px,
-      var(--border) 7px 8px
-    );
+    repeating-linear-gradient(0deg, transparent 0 7px, var(--border) 7px 8px);
 }
 
 .invoice-preview-total {

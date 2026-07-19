@@ -3,10 +3,7 @@ import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { map, tap } from 'rxjs/operators';
-import {
-  createElement,
-  TableSize,
-} from '../../domain/factories/element.factory';
+import { createElement, TableSize } from '../../domain/factories/element.factory';
 import {
   ComponentContent,
   ComponentStyle,
@@ -23,10 +20,7 @@ import {
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
 import { ContractValidatorService } from '../validation/contract-validator.service';
-import {
-  calculateVersionSaveInfo,
-  VersionSaveInfo,
-} from './versioning';
+import { calculateVersionSaveInfo, VersionSaveInfo } from './versioning';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStore {
@@ -50,10 +44,7 @@ export class EditorStore {
     const selected = this.selectedElement();
     if (!selected) return [];
 
-    const excludedIds = new Set([
-      selected.id,
-      ...collectIds(selected.components ?? []),
-    ]);
+    const excludedIds = new Set([selected.id, ...collectIds(selected.components ?? [])]);
     return collectContainers(this.templateState().components).filter(
       (container) => !excludedIds.has(container.id),
     );
@@ -76,16 +67,12 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
-  startFromSavedTemplate(
-    name: string,
-    version: number,
-  ): Observable<boolean> {
+  startFromSavedTemplate(name: string, version: number): Observable<boolean> {
     return this.repository.list().pipe(
       map((templates) => {
         const template = templates.find(
           (candidate) =>
-            candidate.document.name === name &&
-            (candidate.document.version ?? 1) === version,
+            candidate.document.name === name && (candidate.document.version ?? 1) === version,
         );
         if (!template) return false;
 
@@ -180,6 +167,34 @@ export class EditorStore {
     this.insertElement(element, position, parentId);
   }
 
+  addDataSourceField(
+    field: {
+      name: string;
+      displayName: string;
+      description: string;
+      path: string;
+    },
+    position?: { x: number; y: number },
+    parentId: string | null = null,
+  ): void {
+    const element = createElement('text');
+    element.name = field.displayName || field.name;
+    element.content = {
+      ...element.content,
+      mode: 'dynamic',
+      value: `{{${field.path}}}`,
+      dataPath: field.path,
+      defaultValue: field.displayName || field.name,
+    };
+    element.properties = {
+      ...(element.properties ?? {}),
+      dataSourceFieldName: field.name,
+      dataSourceFieldDescription: field.description,
+      dataSourcePath: field.path,
+    };
+    this.insertElement(element, position, parentId);
+  }
+
   private insertElement(
     element: DesignComponent,
     position: { x: number; y: number } | undefined,
@@ -202,11 +217,7 @@ export class EditorStore {
       );
     }
 
-    element.position = findFreePosition(
-      element.position,
-      this.listChildren(parentId),
-      bounds,
-    );
+    element.position = findFreePosition(element.position, this.listChildren(parentId), bounds);
 
     this.templateState.update((template) => {
       if (!parentId) {
@@ -276,8 +287,7 @@ export class EditorStore {
     const elements = this.templateState().components;
     const element = findElement(elements, id);
     if (!element) return false;
-    if (parentId && containsId(element.components ?? [], parentId))
-      return false;
+    if (parentId && containsId(element.components ?? [], parentId)) return false;
 
     const currentParentId = findParentId(elements, id);
     if (currentParentId === parentId) return true;
@@ -285,9 +295,7 @@ export class EditorStore {
     const absolutePosition = findAbsolutePosition(elements, id);
     if (!absolutePosition) return false;
 
-    const targetPosition = parentId
-      ? findAbsolutePosition(elements, parentId)
-      : { x: 0, y: 0 };
+    const targetPosition = parentId ? findAbsolutePosition(elements, parentId) : { x: 0, y: 0 };
     if (!targetPosition) return false;
 
     const bounds = this.getParentBounds(parentId);
@@ -311,11 +319,7 @@ export class EditorStore {
     const targetSiblings = (
       parentId ? (findElement(elements, parentId)?.components ?? []) : elements
     ).filter((item) => item.id !== id);
-    movedElement.position = findFreePosition(
-      movedElement.position,
-      targetSiblings,
-      bounds,
-    );
+    movedElement.position = findFreePosition(movedElement.position, targetSiblings, bounds);
 
     this.templateState.update((template) => {
       const withoutElement = removeElement(template.components, id);
@@ -350,9 +354,7 @@ export class EditorStore {
   }
 
   getElementBounds(id: string): { width: number; height: number } {
-    return this.getParentBounds(
-      findParentId(this.templateState().components, id),
-    );
+    return this.getParentBounds(findParentId(this.templateState().components, id));
   }
 
   /** Componentes que comparten el mismo padre que `id` (excluyéndolo). */
@@ -372,9 +374,7 @@ export class EditorStore {
 
   private listChildren(parentId: string | null): DesignComponent[] {
     if (!parentId) return this.templateState().components;
-    return (
-      findElement(this.templateState().components, parentId)?.components ?? []
-    );
+    return findElement(this.templateState().components, parentId)?.components ?? [];
   }
 
   removeSelected(): void {
@@ -398,9 +398,9 @@ export class EditorStore {
 
   versionSaveInfo(): Observable<VersionSaveInfo> {
     const current = this.templateState();
-    return this.repository.list().pipe(
-      map((templates) => calculateVersionSaveInfo(current, templates)),
-    );
+    return this.repository
+      .list()
+      .pipe(map((templates) => calculateVersionSaveInfo(current, templates)));
   }
 
   saveAsNewVersion(version: number): Observable<DesignContract> {
@@ -440,9 +440,7 @@ export class EditorStore {
       .list()
       .pipe(
         map((templates) =>
-          templates.sort((a, b) =>
-            (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
-          ),
+          templates.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')),
         ),
       );
   }
@@ -454,16 +452,10 @@ export class EditorStore {
   uploadImage(file: File): Observable<{ id: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<{ id: string }>(
-      `${environment.apiBaseUrl}/Images`,
-      formData,
-    );
+    return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
   }
 
-  private updateById(
-    id: string,
-    change: (element: DesignComponent) => DesignComponent,
-  ): void {
+  private updateById(id: string, change: (element: DesignComponent) => DesignComponent): void {
     this.templateState.update((template) => ({
       ...template,
       components: mapElements(template.components, id, change),
@@ -576,15 +568,10 @@ function fitElements(
   });
 }
 
-function findElement(
-  elements: DesignComponent[],
-  id: string,
-): DesignComponent | null {
+function findElement(elements: DesignComponent[], id: string): DesignComponent | null {
   for (const element of elements) {
     if (element.id === id) return element;
-    const nested = element.components
-      ? findElement(element.components, id)
-      : null;
+    const nested = element.components ? findElement(element.components, id) : null;
     if (nested) return nested;
   }
   return null;
@@ -628,16 +615,11 @@ function collectContainers(elements: DesignComponent[]): DesignComponent[] {
 }
 
 function collectIds(elements: DesignComponent[]): string[] {
-  return elements.flatMap((element) => [
-    element.id,
-    ...collectIds(element.components ?? []),
-  ]);
+  return elements.flatMap((element) => [element.id, ...collectIds(element.components ?? [])]);
 }
 
 function containsId(elements: DesignComponent[], id: string): boolean {
-  return elements.some(
-    (element) => element.id === id || containsId(element.components ?? [], id),
-  );
+  return elements.some((element) => element.id === id || containsId(element.components ?? [], id));
 }
 
 function mapElements(
@@ -655,10 +637,7 @@ function mapElements(
   });
 }
 
-function removeElement(
-  elements: DesignComponent[],
-  id: string,
-): DesignComponent[] {
+function removeElement(elements: DesignComponent[], id: string): DesignComponent[] {
   return elements
     .filter((element) => element.id !== id)
     .map((element) =>

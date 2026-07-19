@@ -56,7 +56,7 @@ export class HomePage implements OnInit {
   }
 
   private loadTemplates(): void {
-    this.store.listTemplates().subscribe(t => this.templates.set(t));
+    this.store.listTemplates().subscribe((t) => this.templates.set(t));
   }
 
   search(event: Event): void {
@@ -69,6 +69,10 @@ export class HomePage implements OnInit {
 
   createBlank(): void {
     this.router.navigate(['/editor']);
+  }
+
+  openElectronicDocumentDemo(): void {
+    this.router.navigate(['/demo']);
   }
 
   createFrom(starter: StarterTemplate): void {
@@ -139,16 +143,12 @@ export class HomePage implements OnInit {
     const startOfDay = (value: Date) =>
       new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
     const dayMs = 86_400_000;
-    const diffDays = Math.round(
-      (startOfDay(new Date()) - startOfDay(date)) / dayMs,
-    );
+    const diffDays = Math.round((startOfDay(new Date()) - startOfDay(date)) / dayMs);
 
     if (diffDays <= 0) return `hoy a las ${time}`;
     if (diffDays === 1) return `ayer a las ${time}`;
     if (diffDays < 7) {
-      const weekday = date
-        .toLocaleDateString('es-CO', { weekday: 'short' })
-        .replace('.', '');
+      const weekday = date.toLocaleDateString('es-CO', { weekday: 'short' }).replace('.', '');
       return `${weekday} a las ${time}`;
     }
     return date.toLocaleDateString('es-CO', {
