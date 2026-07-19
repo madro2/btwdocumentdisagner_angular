@@ -569,6 +569,15 @@ select {
   font-family: Georgia, "Times New Roman", serif;
 }
 
+.blocks-heading {
+  margin-top: 12px;
+}
+
+.block-icon {
+  font-size: 15px;
+  background: linear-gradient(160deg, #fdf3f5 0%, #f6dfe4 100%);
+}
+
 .palette-table {
   position: relative;
 }

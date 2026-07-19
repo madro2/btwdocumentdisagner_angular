@@ -192,6 +192,52 @@ input {
   width: 55%;
 }
 
+.invoice-page {
+  gap: 3px;
+}
+
+.invoice-preview-header,
+.invoice-preview-info,
+.invoice-preview-table,
+.invoice-preview-total {
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: 1px;
+}
+
+.invoice-preview-header {
+  height: 18%;
+  border-top: 3px solid var(--brand-700);
+}
+
+.invoice-preview-info {
+  height: 20%;
+  background: linear-gradient(
+    90deg,
+    transparent 0 58%,
+    var(--border) 58% 59%,
+    transparent 59%
+  );
+}
+
+.invoice-preview-table {
+  height: 34%;
+  background:
+    linear-gradient(var(--brand-100) 0 17%, transparent 17%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 7px,
+      var(--border) 7px 8px
+    );
+}
+
+.invoice-preview-total {
+  align-self: flex-end;
+  width: 42%;
+  height: 18%;
+  background: var(--bg-muted);
+}
+
 .content {
   padding: 22px 24px 28px;
   background: var(--surface);

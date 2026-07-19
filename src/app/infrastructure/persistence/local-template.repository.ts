@@ -164,7 +164,9 @@ function migratePage(page?: LegacyTemplate['page']): PageDefinition {
     (page.format as PageDefinition['size'] | undefined) ??
     'A4';
   const base = createPage(
-    size in { A4: 1, Letter: 1, POS58: 1, POS80: 1 } ? size : 'A4',
+    size in { A4: 1, Letter: 1, Legal: 1, POS58: 1, POS80: 1 }
+      ? size
+      : 'A4',
     page.orientation ?? 'portrait',
     page.background ?? '#FFFFFF',
   );

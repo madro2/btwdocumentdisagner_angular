@@ -217,6 +217,29 @@
         <span><strong>Vínculo</strong><small>Texto con URL</small></span>
       </button>
 
+      <div class="panel-heading blocks-heading">
+        <span>Contenedores prediseñados</span>
+        <small>Composiciones genéricas listas para editar</small>
+      </div>
+
+      @for (preset of containerPresets; track preset.kind) {
+        <button
+          class="palette-item block-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startContainerPresetDrag($event, preset.kind)"
+          (click)="addContainerPreset(preset.kind)"
+        >
+          <span class="item-icon block-icon" aria-hidden="true">
+            {{ preset.icon }}
+          </span>
+          <span>
+            <strong>{{ preset.label }}</strong>
+            <small>{{ preset.hint }}</small>
+          </span>
+        </button>
+      }
+
       <section class="help-card">
         <strong>Cómo empezar</strong>
         <ol>
@@ -269,7 +292,7 @@
                 [style.text-align]="element.style?.alignment ?? 'left'"
                 [style.line-height]="element.style?.lineHeight ?? 1.2"
               >
-                {{ element.content?.value }}
+                {{ previewText(element.content?.value) }}
               </div>
             }
 
@@ -298,7 +321,7 @@
                 [style.text-align]="element.style?.alignment ?? 'left'"
                 [style.line-height]="element.style?.lineHeight ?? 1.2"
               >
-                {{ element.content?.value }}
+                {{ previewText(element.content?.value) }}
               </div>
             }
 
@@ -548,9 +571,38 @@
               </label>
               <p class="hint">Cada elemento de la colección genera una fila.</p>
             } @else if (tableMode(selected) === 'fixedRows') {
+              @for (row of fixedRows(selected); track $index) {
+                <div class="column-row">
+                  <input
+                    type="text"
+                    placeholder="Etiqueta"
+                    aria-label="Etiqueta de la fila"
+                    [value]="row.label ?? ''"
+                    (input)="updateFixedRow($index, 'label', $event)"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Ruta XML"
+                    aria-label="Ruta XML de la fila"
+                    [value]="row.dataPath ?? ''"
+                    (input)="updateFixedRow($index, 'dataPath', $event)"
+                  />
+                  <button
+                    class="column-remove"
+                    type="button"
+                    aria-label="Eliminar fila"
+                    (click)="removeFixedRow($index)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              }
+              <button class="format-button" type="button" (click)="addFixedRow()">
+                + Agregar fila
+              </button>
               <p class="hint">
-                Tabla de filas fijas: cada fila del contrato define su etiqueta y
-                valor.
+                Cada fila muestra su etiqueta a la izquierda y el valor de la
+                ruta XML a la derecha.
               </p>
             } @else {
               <p class="hint">
@@ -559,6 +611,7 @@
             }
           </section>
 
+          @if (tableMode(selected) !== 'fixedRows') {
           <section class="property-section">
             <h3>Columnas</h3>
             @for (column of tableColumns(selected) ?? []; track column.id) {
@@ -591,6 +644,7 @@
               + Agregar columna
             </button>
           </section>
+          }
         }
 
         @if (selected.type === 'text' || selected.type === 'link' || selected.type === 'table') {
