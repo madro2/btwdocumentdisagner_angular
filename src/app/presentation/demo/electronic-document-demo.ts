@@ -89,9 +89,9 @@ export class ElectronicDocumentDemo implements OnInit, OnDestroy {
         },
         error: (error) => {
           this.loading.set(false);
-          this.status.set(
-            error?.error?.message ||
-              'No fue posible obtener o interpretar el documento electrónico.',
+          this.showRequestError(
+            error,
+            'No fue posible obtener o interpretar el documento electrónico.',
           );
         },
       });
@@ -134,6 +134,21 @@ export class ElectronicDocumentDemo implements OnInit, OnDestroy {
 
   private currentDesign(): DesignDto | undefined {
     return this.designs().find((design) => this.designKey(design) === this.selectedDesign());
+  }
+
+  private showRequestError(error: unknown, fallback: string): void {
+    const response = error as {
+      error?: Blob | string | { message?: string };
+    };
+    if (response.error instanceof Blob) {
+      void response.error.text().then((message) => this.status.set(message || fallback));
+      return;
+    }
+    if (typeof response.error === 'string') {
+      this.status.set(response.error || fallback);
+      return;
+    }
+    this.status.set(response.error?.message || fallback);
   }
 
   private revokePdfUrl(): void {
