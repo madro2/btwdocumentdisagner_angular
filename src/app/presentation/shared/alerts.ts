@@ -24,6 +24,10 @@ export function notifyInfo(title: string, text?: string): void {
   void toast.fire({ icon: 'info', title, text });
 }
 
+export function notifyError(title: string, text?: string): void {
+  void toast.fire({ icon: 'error', title, text });
+}
+
 export async function confirmAction(options: {
   title: string;
   text?: string;

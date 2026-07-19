@@ -8,7 +8,7 @@ import {
   PageOrientation,
   PageSize,
 } from '../../domain/models/template.model';
-import { confirmAction, notifySuccess } from '../shared/alerts';
+import { confirmAction, notifySuccess, notifyError } from '../shared/alerts';
 
 interface StarterTemplate {
   label: string;
@@ -111,6 +111,11 @@ export class HomePage implements OnInit {
   async remove(event: Event, template: DesignContract): Promise<void> {
     event.stopPropagation();
 
+    if (template.document.version === 1) {
+      notifyError('No permitido', 'La versión 1 (plantilla base) no se puede eliminar.');
+      return;
+    }
+
     const confirmed = await confirmAction({
       title: '¿Eliminar formato?',
       text: `«${template.document.name || 'Sin título'}» se eliminará definitivamente.`,
@@ -118,9 +123,14 @@ export class HomePage implements OnInit {
     });
     if (!confirmed) return;
 
-    this.store.removeTemplate(template.document.id).subscribe(() => {
-      this.loadTemplates();
-      notifySuccess('Formato eliminado');
+    this.store.removeTemplate(template.document.id).subscribe({
+      next: () => {
+        this.loadTemplates();
+        notifySuccess('Formato eliminado');
+      },
+      error: () => {
+        notifyError('Error', 'No se pudo eliminar el formato.');
+      }
     });
   }
 
