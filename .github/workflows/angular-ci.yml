@@ -74,13 +74,13 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "dist/btwdocumental_btwdocumentdisagner_angular/browser"
-          target: "/tmp/angular-staging"
-          strip_components: 1
+          source: "dist/btwdocumental_btwdocumentdisagner_angular/browser/"
+          target: "/var/www/angular/"
+          strip_components: 2
           rm: false
           command_timeout: 5m
 
-      - name: Promote build to web root
+      - name: Fix ownership and reload nginx
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -88,10 +88,10 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            sudo rm -rf /var/www/angular
-            sudo mv /tmp/angular-staging /var/www/angular
             sudo chown -R deploy:deploy /var/www/angular
             sudo chmod -R a+rX /var/www/angular
+            sudo /usr/sbin/nginx -t
+            sudo systemctl reload nginx
             ls -la /var/www/angular/
 
       - name: Reload Nginx
