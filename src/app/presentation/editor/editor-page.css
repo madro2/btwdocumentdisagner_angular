@@ -566,7 +566,7 @@ select {
 }
 
 .text-icon {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .blocks-heading {
@@ -630,6 +630,107 @@ select {
   white-space: nowrap;
 }
 
+.source-heading,
+.source-search,
+.source-catalog {
+  grid-column: 1 / -1;
+}
+
+.source-heading {
+  margin-top: 12px;
+}
+
+.source-search {
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--text-primary);
+  font: inherit;
+  background: var(--bg-muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.source-catalog {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.source-collection {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.source-collection summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  color: var(--brand-700);
+  cursor: pointer;
+}
+
+.source-collection summary small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.source-field {
+  display: flex;
+  align-items: center;
+  width: calc(100% - 12px);
+  gap: 8px;
+  margin: 0 6px 6px;
+  padding: 8px;
+  text-align: left;
+  cursor: grab;
+  background: var(--bg-muted);
+  border: 1px solid transparent;
+  border-radius: 8px;
+}
+
+.source-field:hover {
+  background: var(--brand-50);
+  border-color: var(--brand-100);
+}
+
+.source-field > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.source-field strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-field small {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-field-icon {
+  color: var(--brand-700);
+  font-weight: 700;
+}
+
+.source-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
 .help-card {
   grid-column: 1 / -1;
   margin-top: 10px;
@@ -661,7 +762,9 @@ select {
   background-image:
     radial-gradient(ellipse at top, rgb(255 255 255 / 45%) 0%, transparent 55%),
     radial-gradient(rgb(148 163 184 / 45%) 0.7px, transparent 0.7px);
-  background-size: 100% 240px, 16px 16px;
+  background-size:
+    100% 240px,
+    16px 16px;
   background-repeat: no-repeat, repeat;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -731,7 +834,6 @@ select {
 .link-content {
   text-decoration: underline;
 }
-
 
 .table-content {
   width: 100%;

@@ -1,0 +1,59 @@
+<main class="demo-shell">
+  <header class="demo-header">
+    <div>
+      <span class="eyebrow">Demostración temporal · MVP</span>
+      <h1>Interpretar documento electrónico</h1>
+      <p>Consulta el XML ERP por CUFE y genera el PDF con un formato registrado.</p>
+    </div>
+    <a routerLink="/">Volver al diseñador</a>
+  </header>
+
+  <section class="demo-form">
+    <label>
+      CUFE
+      <input
+        type="text"
+        autocomplete="off"
+        placeholder="Ingresa el CUFE hexadecimal"
+        [value]="cufe()"
+        (input)="updateCufe($event)"
+      />
+    </label>
+
+    <label>
+      Formato y versión
+      <select [value]="selectedDesign()" (change)="updateDesign($event)">
+        @for (design of designs(); track design.id) {
+          <option [value]="designKey(design)">
+            {{ design.designName }} · Versión {{ design.designVersion }}
+          </option>
+        }
+      </select>
+    </label>
+
+    <div class="actions">
+      <button type="button" [disabled]="loading()" (click)="generate()">
+        {{ loading() ? 'Procesando…' : 'Generar y visualizar PDF' }}
+      </button>
+      <button class="secondary" type="button" [disabled]="loading()" (click)="downloadXml()">
+        Descargar XML ERP
+      </button>
+    </div>
+
+    @if (status()) {
+      <p class="status">{{ status() }}</p>
+    }
+  </section>
+
+  <section class="preview">
+    @if (pdfUrl(); as url) {
+      <iframe [src]="url" title="Vista previa del PDF generado"></iframe>
+    } @else {
+      <div class="preview-empty">
+        <span>PDF</span>
+        <strong>La vista previa aparecerá aquí</strong>
+        <small>El XML se consulta desde el backend, no desde el navegador.</small>
+      </div>
+    }
+  </section>
+</main>

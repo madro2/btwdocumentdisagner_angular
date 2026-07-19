@@ -19,27 +19,31 @@
 
     <div class="toolbar-actions">
       <a class="button ghost" routerLink="/">Mis formatos</a>
-      <button class="button ghost" type="button" (click)="createNew()">
-        Nueva
-      </button>
+      <button class="button ghost" type="button" (click)="createNew()">Nueva</button>
       <label class="button ghost">
         Importar JSON
         <input hidden type="file" accept="application/json,.json" (change)="importJson($event)" />
       </label>
       <label class="button ghost">
         Cargar XML
-        <input hidden type="file" accept="application/xml,text/xml,.xml" (change)="importXml($event)" />
+        <input
+          hidden
+          type="file"
+          accept="application/xml,text/xml,.xml"
+          (change)="importXml($event)"
+        />
       </label>
       <label class="button ghost">
         Cargar runtime
-        <input hidden type="file" accept="application/json,.json" (change)="importRuntime($event)" />
+        <input
+          hidden
+          type="file"
+          accept="application/json,.json"
+          (change)="importRuntime($event)"
+        />
       </label>
-      <button class="button ghost" type="button" (click)="exportJson()">
-        Exportar JSON
-      </button>
-      <button class="button primary" type="button" (click)="save()">
-        Guardar
-      </button>
+      <button class="button ghost" type="button" (click)="exportJson()">Exportar JSON</button>
+      <button class="button primary" type="button" (click)="save()">Guardar</button>
     </div>
   </header>
 
@@ -139,7 +143,10 @@
         <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
       </button>
 
-      @for (type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak']; track type) {
+      @for (
+        type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak'];
+        track type
+      ) {
         <button
           class="palette-item compact"
           type="button"
@@ -148,7 +155,10 @@
           (click)="add($any(type))"
         >
           <span class="item-icon">{{ iconFor($any(type)) }}</span>
-          <span><strong>{{ type }}</strong><small>Contrato 3.0</small></span>
+          <span
+            ><strong>{{ type }}</strong
+            ><small>Contrato 3.0</small></span
+          >
         </button>
       }
 
@@ -204,9 +214,7 @@
 
         @if (tablePickerOpen()) {
           <div class="table-picker" (click)="$event.stopPropagation()">
-            <strong class="picker-title">
-              Tabla {{ pickerCols() }} × {{ pickerRows() }}
-            </strong>
+            <strong class="picker-title"> Tabla {{ pickerCols() }} × {{ pickerRows() }} </strong>
             <div class="picker-grid">
               @for (row of pickerRange; track row) {
                 @for (col of pickerRange; track col) {
@@ -265,6 +273,50 @@
         </button>
       }
 
+      <div class="panel-heading source-heading">
+        <span>Fuente de datos</span>
+        <small>Campos conocidos con path automático</small>
+      </div>
+
+      <input
+        class="source-search"
+        type="search"
+        placeholder="Buscar nombre, significado o path…"
+        aria-label="Buscar campos de la fuente de datos"
+        [value]="dataSourceQuery()"
+        (input)="searchDataSourceFields($event)"
+      />
+
+      <div class="source-catalog">
+        @for (collection of filteredDataSourceCollections(); track collection.id) {
+          <details class="source-collection" open>
+            <summary>
+              <strong>{{ collection.name }}</strong>
+              <small>{{ collection.fields.length }} campos</small>
+            </summary>
+
+            @for (field of collection.fields; track field.id) {
+              <button
+                class="source-field"
+                type="button"
+                draggable="true"
+                [title]="field.description"
+                (dragstart)="startDataSourceFieldDrag($event, field)"
+                (click)="addDataSourceField(field)"
+              >
+                <span class="source-field-icon">↳</span>
+                <span>
+                  <strong>{{ field.displayName }}</strong>
+                  <small>{{ field.path }}</small>
+                </span>
+              </button>
+            }
+          </details>
+        } @empty {
+          <p class="source-empty">No hay campos registrados o no coinciden con la búsqueda.</p>
+        }
+      </div>
+
       <section class="help-card">
         <strong>Cómo empezar</strong>
         <ol>
@@ -276,199 +328,194 @@
     </aside>
 
     <section class="canvas-area" (pointerdown)="store.select(null)">
-      <div
-        class="canvas-header"
-        [style.width.mm]="store.template().page.widthMm"
-      >
+      <div class="canvas-header" [style.width.mm]="store.template().page.widthMm">
         <span>
           {{ documentKindOf(store.template().page) === 'pos' ? 'Tirilla' : 'Hoja' }}
-          · {{ store.template().page.widthMm }} ×
-          {{ store.template().page.heightMm }} mm
+          · {{ store.template().page.widthMm }} × {{ store.template().page.heightMm }} mm
         </span>
         <span>{{ store.template().components.length }} componentes</span>
       </div>
 
       <ng-template #elementTemplate let-element let-parentId="parentId">
-          <div
-            class="pdf-element"
-            [class.selected]="store.selectedId() === element.id"
-            [class.container-element]="element.type === 'container'"
-            [class.child-element]="parentId"
-            [style.left.mm]="element.position.x"
-            [style.top.mm]="element.position.y"
-            [style.width.mm]="element.position.width"
-            [style.height.mm]="element.position.height"
-            [style.background]="element.style?.background ?? 'transparent'"
-            [style.border-color]="element.style?.border?.color ?? 'transparent'"
-            [style.border-width.px]="element.style?.border?.widthPt ?? 0"
-            [style.padding.mm]="element.style?.padding ?? 0"
-            (pointerdown)="startInteraction($event, element, 'move')"
-            (click)="select($event, element)"
-            (dragover)="element.type === 'container' && allowContainerDrop($event)"
-            (drop)="element.type === 'container' && dropOnContainer($event, element)"
-          >
-            @if (element.type === 'text') {
-              <div
-                class="text-content"
-                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
-                [style.font-size.pt]="element.style?.fontSizePt ?? 10"
-                [style.font-weight]="element.style?.bold ? 700 : 400"
-                [style.color]="element.style?.color ?? '#111827'"
-                [style.text-align]="element.style?.alignment ?? 'left'"
-                [style.line-height]="element.style?.lineHeight ?? 1.2"
-              >
-                {{ previewText(element) }}
-              </div>
-            }
+        <div
+          class="pdf-element"
+          [class.selected]="store.selectedId() === element.id"
+          [class.container-element]="element.type === 'container'"
+          [class.child-element]="parentId"
+          [style.left.mm]="element.position.x"
+          [style.top.mm]="element.position.y"
+          [style.width.mm]="element.position.width"
+          [style.height.mm]="element.position.height"
+          [style.background]="element.style?.background ?? 'transparent'"
+          [style.border-color]="element.style?.border?.color ?? 'transparent'"
+          [style.border-width.px]="element.style?.border?.widthPt ?? 0"
+          [style.padding.mm]="element.style?.padding ?? 0"
+          (pointerdown)="startInteraction($event, element, 'move')"
+          (click)="select($event, element)"
+          (dragover)="element.type === 'container' && allowContainerDrop($event)"
+          (drop)="element.type === 'container' && dropOnContainer($event, element)"
+        >
+          @if (element.type === 'text') {
+            <div
+              class="text-content"
+              [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+              [style.font-size.pt]="element.style?.fontSizePt ?? 10"
+              [style.font-weight]="element.style?.bold ? 700 : 400"
+              [style.color]="element.style?.color ?? '#111827'"
+              [style.text-align]="element.style?.alignment ?? 'left'"
+              [style.line-height]="element.style?.lineHeight ?? 1.2"
+            >
+              {{ previewText(element) }}
+            </div>
+          }
 
-            @if (element.type === 'image') {
-              @if (element.content?.previewSrc) {
-                <img
-                  [src]="element.content?.previewSrc"
-                  alt=""
-                  [style.object-fit]="element.content?.fit ?? 'contain'"
-                />
-              } @else {
-                <div class="image-placeholder">
-                  <span>▧</span>
-                  <small>Selecciona una imagen</small>
-                </div>
-              }
-            }
-
-            @if (element.type === 'link') {
-              <div
-                class="link-content"
-                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
-                [style.font-size.pt]="element.style?.fontSizePt ?? 10"
-                [style.font-weight]="element.style?.bold ? 700 : 400"
-                [style.color]="element.style?.color ?? '#1d4ed8'"
-                [style.text-align]="element.style?.alignment ?? 'left'"
-                [style.line-height]="element.style?.lineHeight ?? 1.2"
-              >
-                {{ previewText(element.content?.value) }}
-              </div>
-            }
-
-            @if (element.type === 'qrCode') {
-              @if (previewImageSource(element); as qrImage) {
-                <img [src]="qrImage" alt="Código QR" />
-              } @else {
-                <div class="image-placeholder">
-                  <span>▣</span>
-                  <small>{{ element.content?.dataPath || 'Runtime.QrImage' }}</small>
-                </div>
-              }
-            }
-
-            @if (element.type === 'pageNumber') {
-              <div class="text-content">
-                {{ previewText(element) || element.content?.format }}
-              </div>
-            }
-
-            @if (element.type === 'line') {
-              <div
-                class="line-content"
-                [style.border-color]="element.style?.color ?? '#555555'"
-              ></div>
-            }
-
-            @if (element.type === 'barcode') {
+          @if (element.type === 'image') {
+            @if (element.content?.previewSrc) {
+              <img
+                [src]="element.content?.previewSrc"
+                alt=""
+                [style.object-fit]="element.content?.fit ?? 'contain'"
+              />
+            } @else {
               <div class="image-placeholder">
-                <span>▥▥▥</span>
-                <small>{{ element.content?.dataPath || 'Código de barras' }}</small>
+                <span>▧</span>
+                <small>Selecciona una imagen</small>
               </div>
             }
+          }
 
-            @if (element.type === 'pageBreak') {
-              <div class="page-break-content">Salto de página</div>
+          @if (element.type === 'link') {
+            <div
+              class="link-content"
+              [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+              [style.font-size.pt]="element.style?.fontSizePt ?? 10"
+              [style.font-weight]="element.style?.bold ? 700 : 400"
+              [style.color]="element.style?.color ?? '#1d4ed8'"
+              [style.text-align]="element.style?.alignment ?? 'left'"
+              [style.line-height]="element.style?.lineHeight ?? 1.2"
+            >
+              {{ previewText(element.content?.value) }}
+            </div>
+          }
+
+          @if (element.type === 'qrCode') {
+            @if (previewImageSource(element); as qrImage) {
+              <img [src]="qrImage" alt="Código QR" />
+            } @else {
+              <div class="image-placeholder">
+                <span>▣</span>
+                <small>{{ element.content?.dataPath || 'Runtime.QrImage' }}</small>
+              </div>
             }
+          }
 
-            @if (element.type === 'table') {
-              <table
-                class="table-content"
-                [class.borderless]="tableBorderless(element)"
-                [style.height]="element.style?.rowHeightMm ? 'auto' : '100%'"
-                [style.font-family]="element.style?.fontFamily ?? 'Arial'"
-                [style.font-size.pt]="element.style?.fontSizePt ?? 9"
-                [style.color]="element.style?.color ?? '#111827'"
-              >
-                <colgroup>
-                  @for (column of tableColumns(element); track column.id) {
-                    <col [style.width.mm]="column.widthMm ?? null" />
-                  }
-                </colgroup>
-                @if (tableHasHeader(element)) {
-                  <thead>
-                    <tr>
-                      @for (column of tableColumns(element); track column.id) {
-                        <th
-                          [style.text-align]="column.alignment ?? element.style?.header?.alignment ?? 'left'"
-                          [style.background]="element.style?.header?.background ?? null"
-                          [style.font-weight]="element.style?.header?.bold === false ? 400 : 700"
-                        >
-                          {{ column.title }}
-                        </th>
-                      }
-                    </tr>
-                  </thead>
+          @if (element.type === 'pageNumber') {
+            <div class="text-content">
+              {{ previewText(element) || element.content?.format }}
+            </div>
+          }
+
+          @if (element.type === 'line') {
+            <div
+              class="line-content"
+              [style.border-color]="element.style?.color ?? '#555555'"
+            ></div>
+          }
+
+          @if (element.type === 'barcode') {
+            <div class="image-placeholder">
+              <span>▥▥▥</span>
+              <small>{{ element.content?.dataPath || 'Código de barras' }}</small>
+            </div>
+          }
+
+          @if (element.type === 'pageBreak') {
+            <div class="page-break-content">Salto de página</div>
+          }
+
+          @if (element.type === 'table') {
+            <table
+              class="table-content"
+              [class.borderless]="tableBorderless(element)"
+              [style.height]="element.style?.rowHeightMm ? 'auto' : '100%'"
+              [style.font-family]="element.style?.fontFamily ?? 'Arial'"
+              [style.font-size.pt]="element.style?.fontSizePt ?? 9"
+              [style.color]="element.style?.color ?? '#111827'"
+            >
+              <colgroup>
+                @for (column of tableColumns(element); track column.id) {
+                  <col [style.width.mm]="column.widthMm ?? null" />
                 }
-                <tbody>
-                  @for (row of tableBodyRows(element); track $index) {
-                    <tr [style.height.mm]="element.style?.rowHeightMm ?? null">
-                      @for (cell of row; track $index) {
-                        <td
-                          [style.text-align]="cellAlignment(element, $index)"
-                          [style.font-weight]="cellBold(element, $index) ? 700 : null"
-                        >
-                          {{ cell }}
-                        </td>
-                      }
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            }
-
-            @if (element.type === 'container') {
-              <span class="container-label">
-                {{ element.name }} · {{ element.components?.length ?? 0 }}
-              </span>
-
-              @for (child of element.components ?? []; track child.id) {
-                <ng-container
-                  [ngTemplateOutlet]="elementTemplate"
-                  [ngTemplateOutletContext]="{
-                    $implicit: child,
-                    parentId: element.id
-                  }"
-                />
+              </colgroup>
+              @if (tableHasHeader(element)) {
+                <thead>
+                  <tr>
+                    @for (column of tableColumns(element); track column.id) {
+                      <th
+                        [style.text-align]="
+                          column.alignment ?? element.style?.header?.alignment ?? 'left'
+                        "
+                        [style.background]="element.style?.header?.background ?? null"
+                        [style.font-weight]="element.style?.header?.bold === false ? 400 : 700"
+                      >
+                        {{ column.title }}
+                      </th>
+                    }
+                  </tr>
+                </thead>
               }
+              <tbody>
+                @for (row of tableBodyRows(element); track $index) {
+                  <tr [style.height.mm]="element.style?.rowHeightMm ?? null">
+                    @for (cell of row; track $index) {
+                      <td
+                        [style.text-align]="cellAlignment(element, $index)"
+                        [style.font-weight]="cellBold(element, $index) ? 700 : null"
+                      >
+                        {{ cell }}
+                      </td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
 
-              @if (!element.components?.length) {
-                <span class="container-empty">Suelta componentes aquí</span>
-              }
+          @if (element.type === 'container') {
+            <span class="container-label">
+              {{ element.name }} · {{ element.components?.length ?? 0 }}
+            </span>
+
+            @for (child of element.components ?? []; track child.id) {
+              <ng-container
+                [ngTemplateOutlet]="elementTemplate"
+                [ngTemplateOutletContext]="{
+                  $implicit: child,
+                  parentId: element.id,
+                }"
+              />
             }
 
-            @if (repeatOnFor(element) !== 'allPages') {
-              <span
-                class="event-badge"
-                [title]="'Evento de impresión: ' + repeatOnLabel(element)"
-              >
-                {{ repeatOnFor(element) === 'firstPage' ? 'P1' : 'ÚLT' }}
-              </span>
+            @if (!element.components?.length) {
+              <span class="container-empty">Suelta componentes aquí</span>
             }
+          }
 
-            @if (store.selectedId() === element.id) {
-              <button
-                class="resize-handle"
-                type="button"
-                aria-label="Redimensionar componente"
-                (pointerdown)="startInteraction($event, element, 'resize')"
-              ></button>
-            }
-          </div>
+          @if (repeatOnFor(element) !== 'allPages') {
+            <span class="event-badge" [title]="'Evento de impresión: ' + repeatOnLabel(element)">
+              {{ repeatOnFor(element) === 'firstPage' ? 'P1' : 'ÚLT' }}
+            </span>
+          }
+
+          @if (store.selectedId() === element.id) {
+            <button
+              class="resize-handle"
+              type="button"
+              aria-label="Redimensionar componente"
+              (pointerdown)="startInteraction($event, element, 'resize')"
+            ></button>
+          }
+        </div>
       </ng-template>
 
       <div
@@ -485,7 +532,7 @@
             [ngTemplateOutlet]="elementTemplate"
             [ngTemplateOutletContext]="{
               $implicit: element,
-              parentId: null
+              parentId: null,
             }"
           />
         }
@@ -530,10 +577,32 @@
         <section class="property-section">
           <h3>Posición y tamaño</h3>
           <div class="field-grid">
-            <label>X (mm)<input type="number" [value]="selected.position.x" (input)="updateNumber('x', $event)" /></label>
-            <label>Y (mm)<input type="number" [value]="selected.position.y" (input)="updateNumber('y', $event)" /></label>
-            <label>Ancho<input type="number" min="5" [value]="selected.position.width" (input)="updateNumber('width', $event)" /></label>
-            <label>Alto<input type="number" min="5" [value]="selected.position.height" (input)="updateNumber('height', $event)" /></label>
+            <label
+              >X (mm)<input
+                type="number"
+                [value]="selected.position.x"
+                (input)="updateNumber('x', $event)"
+            /></label>
+            <label
+              >Y (mm)<input
+                type="number"
+                [value]="selected.position.y"
+                (input)="updateNumber('y', $event)"
+            /></label>
+            <label
+              >Ancho<input
+                type="number"
+                min="5"
+                [value]="selected.position.width"
+                (input)="updateNumber('width', $event)"
+            /></label>
+            <label
+              >Alto<input
+                type="number"
+                min="5"
+                [value]="selected.position.height"
+                (input)="updateNumber('height', $event)"
+            /></label>
           </div>
         </section>
 
@@ -541,10 +610,7 @@
           <h3>Agrupación</h3>
           <label class="field">
             Dentro de
-            <select
-              [value]="store.selectedParentId() ?? ''"
-              (change)="changeParent($event)"
-            >
+            <select [value]="store.selectedParentId() ?? ''" (change)="changeParent($event)">
               <option value="">Ninguno · directo en la hoja</option>
               @for (container of store.availableParents(); track container.id) {
                 <option [value]="container.id">{{ container.name }}</option>
@@ -552,8 +618,8 @@
             </select>
           </label>
           <p class="hint">
-            Elige un contenedor para agrupar este componente dentro de él; sus
-            coordenadas X e Y pasarán a medirse desde la esquina del contenedor.
+            Elige un contenedor para agrupar este componente dentro de él; sus coordenadas X e Y
+            pasarán a medirse desde la esquina del contenedor.
           </p>
         </section>
 
@@ -562,7 +628,11 @@
             <h3>Contenido</h3>
             <label class="field">
               Texto
-              <textarea rows="3" [value]="selected.content?.value ?? ''" (input)="updateText($event)"></textarea>
+              <textarea
+                rows="3"
+                [value]="selected.content?.value ?? ''"
+                (input)="updateText($event)"
+              ></textarea>
             </label>
             <label class="field">
               Ruta XML
@@ -582,7 +652,11 @@
             <h3>Vínculo</h3>
             <label class="field">
               Texto
-              <textarea rows="2" [value]="selected.content?.value ?? ''" (input)="updateText($event)"></textarea>
+              <textarea
+                rows="2"
+                [value]="selected.content?.value ?? ''"
+                (input)="updateText($event)"
+              ></textarea>
             </label>
             <label class="field">
               URL
@@ -661,49 +735,46 @@
                 + Agregar fila
               </button>
               <p class="hint">
-                Cada fila muestra su etiqueta a la izquierda y el valor de la
-                ruta XML a la derecha.
+                Cada fila muestra su etiqueta a la izquierda y el valor de la ruta XML a la derecha.
               </p>
             } @else {
-              <p class="hint">
-                Tabla de registro: cada campo del contrato llena su columna.
-              </p>
+              <p class="hint">Tabla de registro: cada campo del contrato llena su columna.</p>
             }
           </section>
 
           @if (tableMode(selected) !== 'fixedRows') {
-          <section class="property-section">
-            <h3>Columnas</h3>
-            @for (column of tableColumns(selected) ?? []; track column.id) {
-              <div class="column-row">
-                <input
-                  type="text"
-                  placeholder="Encabezado"
-                  aria-label="Encabezado de la columna"
-                  [value]="column.title ?? ''"
-                  (input)="updateColumn(column, 'title', $event)"
-                />
-                <input
-                  type="text"
-                  placeholder="Ruta XML"
-                  aria-label="Ruta XML de la columna"
-                  [value]="column.dataPath ?? ''"
-                  (input)="updateColumn(column, 'dataPath', $event)"
-                />
-                <button
-                  class="column-remove"
-                  type="button"
-                  aria-label="Eliminar columna"
-                  (click)="removeColumn(column)"
-                >
-                  ✕
-                </button>
-              </div>
-            }
-            <button class="format-button" type="button" (click)="addColumn()">
-              + Agregar columna
-            </button>
-          </section>
+            <section class="property-section">
+              <h3>Columnas</h3>
+              @for (column of tableColumns(selected) ?? []; track column.id) {
+                <div class="column-row">
+                  <input
+                    type="text"
+                    placeholder="Encabezado"
+                    aria-label="Encabezado de la columna"
+                    [value]="column.title ?? ''"
+                    (input)="updateColumn(column, 'title', $event)"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Ruta XML"
+                    aria-label="Ruta XML de la columna"
+                    [value]="column.dataPath ?? ''"
+                    (input)="updateColumn(column, 'dataPath', $event)"
+                  />
+                  <button
+                    class="column-remove"
+                    type="button"
+                    aria-label="Eliminar columna"
+                    (click)="removeColumn(column)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              }
+              <button class="format-button" type="button" (click)="addColumn()">
+                + Agregar columna
+              </button>
+            </section>
           }
         }
 
@@ -711,8 +782,20 @@
           <section class="property-section">
             <h3>Apariencia</h3>
             <div class="field-grid">
-              <label>Tamaño (pt)<input type="number" min="6" max="72" [value]="selected.style?.fontSizePt ?? 10" (input)="updateFontSize($event)" /></label>
-              <label>Color<input type="color" [value]="selected.style?.color ?? '#111827'" (input)="updateColor('color', $event)" /></label>
+              <label
+                >Tamaño (pt)<input
+                  type="number"
+                  min="6"
+                  max="72"
+                  [value]="selected.style?.fontSizePt ?? 10"
+                  (input)="updateFontSize($event)"
+              /></label>
+              <label
+                >Color<input
+                  type="color"
+                  [value]="selected.style?.color ?? '#111827'"
+                  (input)="updateColor('color', $event)"
+              /></label>
             </div>
             @if (selected.type !== 'table') {
               <button
@@ -856,7 +939,10 @@
                     >
                       <svg viewBox="0 0 20 20" aria-hidden="true">
                         <path d="M8 4h10M8 8h10M8 12h10M8 16h10" />
-                        <path class="accent" d="M3 5v10m0-10L1.5 6.5M3 5l1.5 1.5M3 15l-1.5-1.5M3 15l1.5-1.5" />
+                        <path
+                          class="accent"
+                          d="M3 5v10m0-10L1.5 6.5M3 5l1.5 1.5M3 15l-1.5-1.5M3 15l1.5-1.5"
+                        />
                       </svg>
                     </button>
                     <button
@@ -883,7 +969,6 @@
                     }
                   </div>
                 </div>
-
               </div>
             </div>
           </section>
@@ -894,7 +979,11 @@
             <h3>Imagen</h3>
             <label class="upload">
               <span>Seleccionar archivo</span>
-              <input type="file" accept="image/png,image/jpeg,image/svg+xml" (change)="loadImage($event)" />
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml"
+                (change)="loadImage($event)"
+              />
             </label>
             <small class="hint">PNG, JPG o SVG. Para el prototipo se guarda en el JSON.</small>
           </section>
@@ -905,11 +994,14 @@
             <h3>Contenedor</h3>
             <label class="field">
               Fondo
-              <input type="color" [value]="selected.style?.background ?? '#ffffff'" (input)="updateColor('background', $event)" />
+              <input
+                type="color"
+                [value]="selected.style?.background ?? '#ffffff'"
+                (input)="updateColor('background', $event)"
+              />
             </label>
             <p class="hint">
-              Arrastra componentes sobre el contenedor o asígnalos desde
-              «Componente padre».
+              Arrastra componentes sobre el contenedor o asígnalos desde «Componente padre».
             </p>
           </section>
         }
@@ -918,10 +1010,7 @@
           <h3>Eventos</h3>
           <label class="field">
             Imprimir componente
-            <select
-              [value]="repeatOnFor(selected)"
-              (change)="updateRepeatOn($event)"
-            >
+            <select [value]="repeatOnFor(selected)" (change)="updateRepeatOn($event)">
               <option value="allPages">En todas las páginas</option>
               <option value="firstPage">Solo en la primera página</option>
               <option value="lastPage">Solo en la última página</option>

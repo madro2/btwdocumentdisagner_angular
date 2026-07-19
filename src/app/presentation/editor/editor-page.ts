@@ -1,11 +1,8 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { Component, HostListener, inject, signal } from '@angular/core';
+import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import {
-  EditorStore,
-  rectsOverlap,
-} from '../../application/editor/editor.store';
+import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
   CONTAINER_PRESETS,
@@ -13,6 +10,11 @@ import {
   createContainerPreset,
 } from '../../domain/factories/block.factory';
 import { confirmAction, notifySuccess } from '../shared/alerts';
+import {
+  DataSourceCatalogService,
+  DataSourceCollection,
+  DataSourceField,
+} from '../../infrastructure/data-sources/data-source-catalog.service';
 import { sampleCell, withSampleData } from './sample-data';
 import {
   ComponentType,
@@ -86,6 +88,7 @@ export class EditorPage {
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly dataSourceCatalog = inject(DataSourceCatalogService);
   private interaction: Interaction | null = null;
 
   readonly containerPresets = CONTAINER_PRESETS;
@@ -97,24 +100,39 @@ export class EditorPage {
   readonly alignmentGuides = signal<AlignmentGuide[]>([]);
   readonly openMenu = signal<'spacing' | null>(null);
   readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+  readonly dataSourceCollections = signal<DataSourceCollection[]>([]);
+  readonly dataSourceQuery = signal('');
+  readonly filteredDataSourceCollections = computed(() => {
+    const query = this.dataSourceQuery().trim().toLowerCase();
+    if (!query) return this.dataSourceCollections();
+    return this.dataSourceCollections()
+      .map((collection) => ({
+        ...collection,
+        fields: collection.fields.filter((field) =>
+          [field.displayName, field.name, field.description, field.path].some((value) =>
+            value.toLowerCase().includes(query),
+          ),
+        ),
+      }))
+      .filter((collection) => collection.fields.length > 0);
+  });
 
   constructor() {
+    this.dataSourceCatalog.list().subscribe({
+      next: (collections) => this.dataSourceCollections.set(collections),
+      error: () => this.dataSourceCollections.set([]),
+    });
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
       const preset = this.route.snapshot.queryParamMap.get('preset');
       if (preset === 'standard-invoice') {
         this.status.set('Cargando plantilla desde la base de datos...');
         this.store
-          .startFromSavedTemplate(
-            NATIONAL_INVOICE_TEMPLATE.name,
-            NATIONAL_INVOICE_TEMPLATE.version,
-          )
+          .startFromSavedTemplate(NATIONAL_INVOICE_TEMPLATE.name, NATIONAL_INVOICE_TEMPLATE.version)
           .subscribe({
             next: (loaded) => {
               if (!loaded) {
-                this.status.set(
-                  'La plantilla de factura electrónica nacional no está registrada.',
-                );
+                this.status.set('La plantilla de factura electrónica nacional no está registrada.');
                 void this.router.navigate(['/']);
                 return;
               }
@@ -125,9 +143,7 @@ export class EditorPage {
               );
             },
             error: () => {
-              this.status.set(
-                'No fue posible cargar la plantilla desde el servidor.',
-              );
+              this.status.set('No fue posible cargar la plantilla desde el servidor.');
             },
           });
         return;
@@ -135,9 +151,7 @@ export class EditorPage {
 
       this.store.createNew();
 
-      const size = this.route.snapshot.queryParamMap.get(
-        'size',
-      ) as PageSize | null;
+      const size = this.route.snapshot.queryParamMap.get('size') as PageSize | null;
       if (size && size in PAGE_SIZES) {
         this.store.setPageFormat(size);
       }
@@ -168,9 +182,7 @@ export class EditorPage {
 
   setDocumentKind(kind: DocumentKind): void {
     this.store.setDocumentKind(kind);
-    this.status.set(
-      kind === 'pos' ? 'Documento tipo tirilla POS' : 'Documento tipo PDF',
-    );
+    this.status.set(kind === 'pos' ? 'Documento tipo tirilla POS' : 'Documento tipo PDF');
   }
 
   setPageFormat(event: Event): void {
@@ -180,14 +192,9 @@ export class EditorPage {
   }
 
   setOrientation(event: Event): void {
-    const orientation = (event.target as HTMLSelectElement)
-      .value as PageOrientation;
+    const orientation = (event.target as HTMLSelectElement).value as PageOrientation;
     this.store.setOrientation(orientation);
-    this.status.set(
-      orientation === 'portrait'
-        ? 'Orientación vertical'
-        : 'Orientación horizontal',
-    );
+    this.status.set(orientation === 'portrait' ? 'Orientación vertical' : 'Orientación horizontal');
   }
 
   updatePageHeight(event: Event): void {
@@ -295,9 +302,7 @@ export class EditorPage {
     const next = alreadyApplied
       ? stripped.join('\n')
       : kind === 'bullet'
-        ? stripped
-            .map((line) => (line.trim() ? `${marker} ${line}` : line))
-            .join('\n')
+        ? stripped.map((line) => (line.trim() ? `${marker} ${line}` : line)).join('\n')
         : stripped
             .map((line, index) =>
               line.trim() ? `${formatListMarker(marker, index)} ${line}` : line,
@@ -306,19 +311,13 @@ export class EditorPage {
 
     this.store.updateContent(selected.id, { value: next });
     this.openMenu.set(null);
-    this.status.set(
-      kind === 'bullet' ? 'Viñetas actualizadas' : 'Numeración actualizada',
-    );
+    this.status.set(kind === 'bullet' ? 'Viñetas actualizadas' : 'Numeración actualizada');
   }
 
   private adjustIndent(delta: number): void {
     const selected = this.store.selectedElement();
     if (!selected || !this.paragraphToolsEnabled()) return;
-    const next = clamp(
-      (selected.style?.padding ?? 0) + delta,
-      0,
-      MAX_INDENT_MM,
-    );
+    const next = clamp((selected.style?.padding ?? 0) + delta, 0, MAX_INDENT_MM);
     this.store.updateStyle(selected.id, { padding: next });
     this.status.set('Sangría actualizada');
   }
@@ -348,10 +347,7 @@ export class EditorPage {
     const columns = this.tableColumns(element);
     const content = element.content ?? {};
 
-    if (
-      this.tableMode(element) === 'fixedRows' &&
-      Array.isArray(content.rows)
-    ) {
+    if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
           if (column.value) return withSampleData(column.value);
@@ -368,18 +364,14 @@ export class EditorPage {
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
           if (field?.value) return withSampleData(field.value);
-          return field?.dataPath
-            ? withSampleData(`{{${field.dataPath}}}`)
-            : '—';
+          return field?.dataPath ? withSampleData(`{{${field.dataPath}}}`) : '—';
         }),
       ];
     }
 
     const rowAlias = content.rowAlias;
     const collectionPath = content.collectionPath ?? content.dataPath;
-    const records = collectionPath
-      ? this.bindings.collection(collectionPath)
-      : [];
+    const records = collectionPath ? this.bindings.collection(collectionPath) : [];
     if (records.length) {
       const alias = content.rowAlias ?? 'Row';
       return records.map((record) =>
@@ -396,9 +388,7 @@ export class EditorPage {
 
     return Array.from({ length: this.tableRows(element) }, (_, rowIndex) =>
       columns.map((column) =>
-        column.value
-          ? column.value
-          : sampleCell(rowAlias, column.dataPath, rowIndex),
+        column.value ? column.value : sampleCell(rowAlias, column.dataPath, rowIndex),
       ),
     );
   }
@@ -431,17 +421,13 @@ export class EditorPage {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const error = this.store.importContract(
-          JSON.parse(String(reader.result)),
-        );
+        const error = this.store.importContract(JSON.parse(String(reader.result)));
         if (error) {
           this.status.set(error);
           return;
         }
         this.bindings.configure(this.store.template());
-        this.status.set(
-          `Contrato ${this.store.template().schemaVersion} importado`,
-        );
+        this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
       } catch (error) {
         this.status.set(`JSON inválido: ${(error as Error).message}`);
       } finally {
@@ -461,8 +447,7 @@ export class EditorPage {
       this.bindings.configure(this.store.template());
       const error = this.bindings.loadXml(String(reader.result));
       this.status.set(
-        error ??
-          `XML cargado · ${this.bindings.availablePaths().length} rutas disponibles`,
+        error ?? `XML cargado · ${this.bindings.availablePaths().length} rutas disponibles`,
       );
       input.value = '';
     };
@@ -490,9 +475,7 @@ export class EditorPage {
             ? (envelope['runtime'] as Record<string, unknown>)
             : envelope;
         this.bindings.setRuntime(runtime);
-        this.status.set(
-          `Runtime cargado · ${Object.keys(runtime).length} parámetros`,
-        );
+        this.status.set(`Runtime cargado · ${Object.keys(runtime).length} parámetros`);
       } catch (error) {
         this.status.set(`Runtime JSON inválido: ${(error as Error).message}`);
       } finally {
@@ -503,11 +486,7 @@ export class EditorPage {
   }
 
   cellAlignment(element: DesignComponent, columnIndex: number): string {
-    return (
-      this.tableColumns(element)[columnIndex]?.alignment ??
-      element.style?.alignment ??
-      'left'
-    );
+    return this.tableColumns(element)[columnIndex]?.alignment ?? element.style?.alignment ?? 'left';
   }
 
   cellBold(element: DesignComponent, columnIndex: number): boolean {
@@ -566,6 +545,22 @@ export class EditorPage {
     }
   }
 
+  startDataSourceFieldDrag(event: DragEvent, field: DataSourceField): void {
+    event.dataTransfer?.setData('application/x-data-source-field', JSON.stringify(field));
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'copy';
+    }
+  }
+
+  addDataSourceField(field: DataSourceField): void {
+    this.store.addDataSourceField(field);
+    this.status.set(`Campo "${field.displayName}" enlazado a ${field.path}`);
+  }
+
+  searchDataSourceFields(event: Event): void {
+    this.dataSourceQuery.set((event.target as HTMLInputElement).value);
+  }
+
   addContainerPreset(kind: ContainerPresetKind): void {
     const container = createContainerPreset(kind);
     this.store.addPrefab(container);
@@ -585,24 +580,25 @@ export class EditorPage {
     event.preventDefault();
     const page = event.currentTarget as HTMLElement;
     const rect = page.getBoundingClientRect();
-    const scaleX =
-      rect.width / (this.store.template().page.widthMm * CSS_MM_IN_PX);
-    const scaleY =
-      rect.height / (this.store.template().page.heightMm * CSS_MM_IN_PX);
+    const scaleX = rect.width / (this.store.template().page.widthMm * CSS_MM_IN_PX);
+    const scaleY = rect.height / (this.store.template().page.heightMm * CSS_MM_IN_PX);
     const dropPoint = {
       x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
       y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
     };
 
-    const presetKind = event.dataTransfer?.getData(
-      'application/x-container-preset-kind',
-    );
+    const presetKind = event.dataTransfer?.getData('application/x-container-preset-kind');
     if (presetKind) {
-      const container = createContainerPreset(
-        presetKind as ContainerPresetKind,
-      );
+      const container = createContainerPreset(presetKind as ContainerPresetKind);
       this.store.addPrefab(container, dropPoint);
       this.status.set(`Contenedor "${container.name}" agregado`);
+      return;
+    }
+
+    const dataSourceField = this.readDataSourceField(event);
+    if (dataSourceField) {
+      this.store.addDataSourceField(dataSourceField, dropPoint);
+      this.status.set(`Campo "${dataSourceField.displayName}" enlazado a ${dataSourceField.path}`);
       return;
     }
 
@@ -636,14 +632,19 @@ export class EditorPage {
       y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
     };
 
-    const presetKind = event.dataTransfer?.getData(
-      'application/x-container-preset-kind',
-    );
+    const presetKind = event.dataTransfer?.getData('application/x-container-preset-kind');
     if (presetKind) {
       const preset = createContainerPreset(presetKind as ContainerPresetKind);
       this.store.addPrefab(preset, dropPoint, container.id);
+      this.status.set(`Contenedor agregado dentro de ${container.name ?? 'contenedor'}`);
+      return;
+    }
+
+    const dataSourceField = this.readDataSourceField(event);
+    if (dataSourceField) {
+      this.store.addDataSourceField(dataSourceField, dropPoint, container.id);
       this.status.set(
-        `Contenedor agregado dentro de ${container.name ?? 'contenedor'}`,
+        `Campo "${dataSourceField.displayName}" agregado dentro de ${container.name}`,
       );
       return;
     }
@@ -651,17 +652,26 @@ export class EditorPage {
     const type = event.dataTransfer?.getData('application/x-component-type');
     if (!type) return;
     this.store.addElement(type as ComponentType, dropPoint, container.id);
-    this.status.set(
-      `Componente agregado dentro de ${container.name ?? 'contenedor'}`,
-    );
+    this.status.set(`Componente agregado dentro de ${container.name ?? 'contenedor'}`);
   }
 
   private hasPaletteData(event: DragEvent): boolean {
     const types = event.dataTransfer?.types;
     return Boolean(
       types?.includes('application/x-component-type') ||
-      types?.includes('application/x-container-preset-kind'),
+      types?.includes('application/x-container-preset-kind') ||
+      types?.includes('application/x-data-source-field'),
     );
+  }
+
+  private readDataSourceField(event: DragEvent): DataSourceField | null {
+    const raw = event.dataTransfer?.getData('application/x-data-source-field');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as DataSourceField;
+    } catch {
+      return null;
+    }
   }
 
   select(event: PointerEvent, element: DesignComponent): void {
@@ -669,11 +679,7 @@ export class EditorPage {
     this.store.select(element.id);
   }
 
-  startInteraction(
-    event: PointerEvent,
-    element: DesignComponent,
-    mode: InteractionMode,
-  ): void {
+  startInteraction(event: PointerEvent, element: DesignComponent, mode: InteractionMode): void {
     event.preventDefault();
     event.stopPropagation();
     this.store.select(element.id);
@@ -693,10 +699,8 @@ export class EditorPage {
   moveInteraction(event: PointerEvent): void {
     if (!this.interaction) return;
 
-    const deltaX =
-      (event.clientX - this.interaction.startClientX) / CSS_MM_IN_PX;
-    const deltaY =
-      (event.clientY - this.interaction.startClientY) / CSS_MM_IN_PX;
+    const deltaX = (event.clientX - this.interaction.startClientX) / CSS_MM_IN_PX;
+    const deltaY = (event.clientY - this.interaction.startClientY) / CSS_MM_IN_PX;
 
     if (this.interaction.mode === 'move') {
       this.applyMove(deltaX, deltaY);
@@ -745,10 +749,7 @@ export class EditorPage {
     for (const target of verticalTargets) {
       for (const own of ownVertical) {
         const shift = target - (x + own);
-        if (
-          Math.abs(shift) <= SNAP_MM &&
-          (!snapV || Math.abs(shift) < Math.abs(snapV.shift))
-        ) {
+        if (Math.abs(shift) <= SNAP_MM && (!snapV || Math.abs(shift) < Math.abs(snapV.shift))) {
           snapV = { shift, line: target };
         }
       }
@@ -758,10 +759,7 @@ export class EditorPage {
     for (const target of horizontalTargets) {
       for (const own of ownHorizontal) {
         const shift = target - (y + own);
-        if (
-          Math.abs(shift) <= SNAP_MM &&
-          (!snapH || Math.abs(shift) < Math.abs(snapH.shift))
-        ) {
+        if (Math.abs(shift) <= SNAP_MM && (!snapH || Math.abs(shift) < Math.abs(snapH.shift))) {
           snapH = { shift, line: target };
         }
       }
@@ -772,9 +770,7 @@ export class EditorPage {
 
     // Sin superposición: si choca, desliza por un solo eje o se detiene.
     const collidesAt = (px: number, py: number) =>
-      siblings.some((sibling) =>
-        rectsOverlap(px, py, width, height, sibling.position),
-      );
+      siblings.some((sibling) => rectsOverlap(px, py, width, height, sibling.position));
     if (collidesAt(x, y)) {
       if (!collidesAt(x, element.position.y)) {
         y = element.position.y;
@@ -793,19 +789,13 @@ export class EditorPage {
     // Solo dibuja la guía si tras resolver colisiones sigue alineado.
     const offset = this.store.getParentOffset(interaction.id);
     const guides: AlignmentGuide[] = [];
-    if (
-      snapV &&
-      ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)
-    ) {
+    if (snapV && ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)) {
       guides.push({
         orientation: 'vertical',
         positionMm: offset.x + snapV.line,
       });
     }
-    if (
-      snapH &&
-      ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)
-    ) {
+    if (snapH && ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)) {
       guides.push({
         orientation: 'horizontal',
         positionMm: offset.y + snapH.line,
@@ -825,16 +815,8 @@ export class EditorPage {
     const bounds = this.store.getElementBounds(interaction.id);
     const maxWidth = bounds.width - interaction.initialX;
     const maxHeight = bounds.height - interaction.initialY;
-    let width = clamp(
-      interaction.initialWidth + deltaX,
-      5,
-      Math.max(5, maxWidth),
-    );
-    let height = clamp(
-      interaction.initialHeight + deltaY,
-      5,
-      Math.max(5, maxHeight),
-    );
+    let width = clamp(interaction.initialWidth + deltaX, 5, Math.max(5, maxWidth));
+    let height = clamp(interaction.initialHeight + deltaY, 5, Math.max(5, maxHeight));
 
     const siblings = this.store.getSiblings(interaction.id);
     const x = interaction.initialX;
@@ -888,11 +870,7 @@ export class EditorPage {
     return Array.isArray(rows) ? rows : [];
   }
 
-  updateFixedRow(
-    index: number,
-    property: 'label' | 'dataPath',
-    event: Event,
-  ): void {
+  updateFixedRow(index: number, property: 'label' | 'dataPath', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
 
@@ -920,9 +898,7 @@ export class EditorPage {
     if (!selected) return;
 
     this.store.updateContent(selected.id, {
-      rows: this.fixedRows(selected).filter(
-        (_, rowIndex) => rowIndex !== index,
-      ),
+      rows: this.fixedRows(selected).filter((_, rowIndex) => rowIndex !== index),
     });
     this.status.set('Fila eliminada');
   }
@@ -945,11 +921,7 @@ export class EditorPage {
     this.status.set('Columna agregada');
   }
 
-  updateColumn(
-    column: TableColumn,
-    property: 'title' | 'dataPath',
-    event: Event,
-  ): void {
+  updateColumn(column: TableColumn, property: 'title' | 'dataPath', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
 
@@ -967,9 +939,7 @@ export class EditorPage {
     if (!selected) return;
 
     this.store.updateElement(selected.id, {
-      columns: this.tableColumns(selected).filter(
-        (item) => item.id !== column.id,
-      ),
+      columns: this.tableColumns(selected).filter((item) => item.id !== column.id),
     });
     this.status.set('Columna eliminada');
   }
@@ -1071,12 +1041,9 @@ export class EditorPage {
                 `Versión ${nextVersion} creada`,
                 versionedTemplate.document.name || undefined,
               );
-              void this.router.navigate(
-                ['/editor', versionedTemplate.document.id],
-                {
-                  replaceUrl: true,
-                },
-              );
+              void this.router.navigate(['/editor', versionedTemplate.document.id], {
+                replaceUrl: true,
+              });
             },
             error: () => {
               this.status.set(
@@ -1090,10 +1057,7 @@ export class EditorPage {
         this.store.save().subscribe({
           next: () => {
             this.status.set('Formato guardado en el servidor');
-            notifySuccess(
-              'Formato guardado',
-              this.store.template().document.name || undefined,
-            );
+            notifySuccess('Formato guardado', this.store.template().document.name || undefined);
             const newId = this.store.template().document.id;
             void this.router.navigate(['/editor', newId], { replaceUrl: true });
           },
@@ -1103,9 +1067,7 @@ export class EditorPage {
         });
       },
       error: () => {
-        this.status.set(
-          'No fue posible consultar las versiones existentes del formato.',
-        );
+        this.status.set('No fue posible consultar las versiones existentes del formato.');
       },
     });
   }
@@ -1143,10 +1105,7 @@ export class EditorPage {
     link.click();
     URL.revokeObjectURL(url);
     this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
-    notifySuccess(
-      'JSON exportado',
-      `${template.document.name || 'plantilla'}.json`,
-    );
+    notifySuccess('JSON exportado', `${template.document.name || 'plantilla'}.json`);
   }
 
   async remove(): Promise<void> {
