@@ -1,4 +1,8 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
+import { map } from 'rxjs/operators';
 import { createElement, TableSize } from '../../domain/factories/element.factory';
 import {
   ComponentContent,
@@ -15,10 +19,13 @@ import {
   RepeatOn,
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
+import { ContractValidatorService } from '../validation/contract-validator.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStore {
   private readonly repository = inject(TEMPLATE_REPOSITORY);
+  private readonly validator = inject(ContractValidatorService);
+  private readonly http = inject(HttpClient);
   private readonly templateState = signal<DesignContract>(this.emptyTemplate());
   private readonly selectedIdState = signal<string | null>(null);
 
@@ -60,6 +67,35 @@ export class EditorStore {
       updatedAt: new Date().toISOString(),
     });
     this.selectedIdState.set(null);
+  }
+
+  importContract(raw: unknown): string | null {
+    if (!raw || typeof raw !== 'object') {
+      return 'El archivo no contiene un objeto JSON.';
+    }
+
+    const contract = raw as Partial<DesignContract>;
+    if (
+      !['2.1', '2.2', '3.0'].includes(contract.schemaVersion ?? '') ||
+      !contract.document?.id ||
+      !contract.page ||
+      !Array.isArray(contract.components)
+    ) {
+      return 'El contrato no contiene schemaVersion, document, page y components válidos.';
+    }
+
+    const errors = this.validator.validate(contract as DesignContract);
+    if (errors.length) {
+      return `Contrato inválido: ${errors.slice(0, 3).join(' ')}`;
+    }
+
+    this.templateState.set(contract as DesignContract);
+    this.selectedIdState.set(null);
+    return null;
+  }
+
+  validationErrors(): string[] {
+    return this.validator.validate(this.templateState());
   }
 
   rename(name: string): void {
@@ -325,31 +361,39 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
-  save(): void {
+  save(): Observable<void> {
     this.templateState.update((template) => ({
       ...template,
       updatedAt: new Date().toISOString(),
     }));
-    this.repository.save(this.templateState());
+    return this.repository.save(this.templateState());
   }
 
-  loadById(id: string): boolean {
-    const template = this.repository.load(id);
-    if (!template) return false;
-
-    this.templateState.set(template);
-    this.selectedIdState.set(null);
-    return true;
+  loadById(id: string): Observable<boolean> {
+    return this.repository.load(id).pipe(
+      map(template => {
+        if (!template) return false;
+        this.templateState.set(template);
+        this.selectedIdState.set(null);
+        return true;
+      })
+    );
   }
 
-  listTemplates(): DesignContract[] {
-    return this.repository
-      .list()
-      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+  listTemplates(): Observable<DesignContract[]> {
+    return this.repository.list().pipe(
+      map(templates => templates.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')))
+    );
   }
 
-  removeTemplate(id: string): void {
-    this.repository.remove(id);
+  removeTemplate(id: string): Observable<void> {
+    return this.repository.remove(id);
+  }
+
+  uploadImage(file: File): Observable<{ id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
   }
 
   private updateById(
@@ -372,17 +416,29 @@ export class EditorStore {
 
   private emptyTemplate(): DesignContract {
     return {
-      schemaVersion: '2.1',
+      schemaVersion: '3.0',
       document: {
         id: crypto.randomUUID(),
         name: 'Formato sin título',
         type: 'document',
         version: 1,
       },
+      dataSource: {
+        type: 'xml',
+        rootPath: '/NewDataSet',
+        pathDialect: 'dotPath',
+        selectionMode: 'directChildren',
+        allowMissingFields: true,
+        runtimeParameters: [],
+        tables: [],
+        lookups: {},
+        computedFields: [],
+      },
       page: createPage('A4'),
       resources: [],
       sharedStyles: {},
       components: [],
+      validation: { status: 'draft', pendingBindings: [] },
       updatedAt: new Date().toISOString(),
     };
   }

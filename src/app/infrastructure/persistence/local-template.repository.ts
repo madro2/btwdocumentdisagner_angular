@@ -10,20 +10,22 @@ import {
 } from '../../domain/models/template.model';
 import { TemplateRepository } from '../../domain/ports/template.repository';
 
+import { Observable, of } from 'rxjs';
+
 const STORAGE_KEY = 'pdf-designer.templates';
 const LEGACY_DRAFT_KEY = 'pdf-designer.template-draft';
 
 @Injectable()
 export class LocalTemplateRepository implements TemplateRepository {
-  list(): DesignContract[] {
-    return this.read();
+  list(): Observable<DesignContract[]> {
+    return of(this.read());
   }
 
-  load(id: string): DesignContract | null {
-    return this.read().find((template) => template.document.id === id) ?? null;
+  load(id: string): Observable<DesignContract | null> {
+    return of(this.read().find((template) => template.document.id === id) ?? null);
   }
 
-  save(template: DesignContract): void {
+  save(template: DesignContract): Observable<void> {
     const templates = this.read();
     const index = templates.findIndex(
       (item) => item.document.id === template.document.id,
@@ -36,15 +38,17 @@ export class LocalTemplateRepository implements TemplateRepository {
     }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+    return of(undefined);
   }
 
-  remove(id: string): void {
+  remove(id: string): Observable<void> {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(
         this.read().filter((template) => template.document.id !== id),
       ),
     );
+    return of(undefined);
   }
 
   private read(): DesignContract[] {
@@ -55,7 +59,7 @@ export class LocalTemplateRepository implements TemplateRepository {
 
     try {
       const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(migrate) : [];
+      return Array.isArray(parsed) ? parsed.map(normalizeContract) : [];
     } catch {
       return [];
     }
@@ -66,11 +70,13 @@ export class LocalTemplateRepository implements TemplateRepository {
     if (!value) return;
 
     try {
-      const draft = migrate(JSON.parse(value));
+      const draft = normalizeContract(JSON.parse(value));
       const templates = [draft];
       const existing = localStorage.getItem(STORAGE_KEY);
       if (existing) {
-        templates.push(...(JSON.parse(existing) as DesignContract[]).map(migrate));
+        templates.push(
+          ...(JSON.parse(existing) as DesignContract[]).map(normalizeContract),
+        );
       }
       localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
     } catch {
@@ -127,7 +133,7 @@ type LegacyTemplate = Partial<DesignContract> & {
   };
 };
 
-function migrate(raw: LegacyTemplate): DesignContract {
+export function normalizeContract(raw: LegacyTemplate): DesignContract {
   const page = migratePage(raw.page);
   const components = (
     (raw.components as LegacyElement[] | undefined) ??
@@ -137,7 +143,11 @@ function migrate(raw: LegacyTemplate): DesignContract {
   ).map(migrateComponent);
 
   return {
-    schemaVersion: '2.1',
+    ...(raw as DesignContract),
+    schemaVersion:
+      raw.schemaVersion === '3.0' || raw.schemaVersion === '2.2'
+        ? raw.schemaVersion
+        : '2.1',
     document: {
       id: raw.document?.id ?? raw.id ?? crypto.randomUUID(),
       name: raw.document?.name ?? raw.name ?? 'Formato sin título',
@@ -152,6 +162,7 @@ function migrate(raw: LegacyTemplate): DesignContract {
     components,
     renderingRules: raw.renderingRules,
     resolvedFields: raw.resolvedFields,
+    validation: raw.validation,
     updatedAt: raw.updatedAt ?? new Date().toISOString(),
   };
 }
@@ -159,12 +170,18 @@ function migrate(raw: LegacyTemplate): DesignContract {
 function migratePage(page?: LegacyTemplate['page']): PageDefinition {
   if (!page) return createPage('A4');
 
-  const size =
+  const rawSize =
     (page.size as PageDefinition['size'] | undefined) ??
     (page.format as PageDefinition['size'] | undefined) ??
     'A4';
+  const size =
+    (rawSize as string) === 'Letter'
+      ? 'LETTER'
+      : (rawSize as string) === 'Legal'
+        ? 'LEGAL'
+        : rawSize;
   const base = createPage(
-    size in { A4: 1, Letter: 1, Legal: 1, POS58: 1, POS80: 1 }
+    size in { A4: 1, LETTER: 1, LEGAL: 1, CUSTOM: 1, POS58: 1, POS80: 1 }
       ? size
       : 'A4',
     page.orientation ?? 'portrait',
@@ -228,6 +245,7 @@ function migrateComponent(raw: LegacyElement): DesignComponent {
   ).map(migrateComponent);
 
   return {
+    ...(raw as DesignComponent),
     id: raw.id,
     type: raw.type,
     name: raw.name,

@@ -15,7 +15,7 @@ import {
 /** Plantilla base de factura electrónica compuesta por bloques prediseñados. */
 export function createStandardInvoiceTemplate(): DesignContract {
   return {
-    schemaVersion: '2.1',
+    schemaVersion: '3.0',
     document: {
       id: crypto.randomUUID(),
       name: 'Factura electrónica estándar',
@@ -25,8 +25,15 @@ export function createStandardInvoiceTemplate(): DesignContract {
         'Plantilla base inspirada en el formato de factura electrónica BTW.',
     },
     dataSource: {
-      description:
-        'Rutas sugeridas: Emisor, Cliente, Factura, Items, Totales y Dian.',
+      type: 'xml',
+      rootPath: '/NewDataSet',
+      pathDialect: 'dotPath',
+      selectionMode: 'directChildren',
+      allowMissingFields: true,
+      runtimeParameters: [],
+      tables: [],
+      lookups: {},
+      computedFields: [],
     },
     page: createPage('A4'),
     resources: [],
@@ -42,6 +49,7 @@ export function createStandardInvoiceTemplate(): DesignContract {
       taxDetail(),
       invoiceFooter(),
     ],
+    validation: { status: 'draft', pendingBindings: [] },
     updatedAt: new Date().toISOString(),
   };
 }
