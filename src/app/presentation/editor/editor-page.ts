@@ -2,7 +2,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EditorStore } from '../../application/editor/editor.store';
+import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
+import { confirmAction, notifySuccess } from '../shared/alerts';
 import {
   ComponentType,
   DesignComponent,
@@ -13,6 +14,7 @@ import {
   PageSize,
   RepeatOn,
   TableColumn,
+  TextAlignment,
 } from '../../domain/models/template.model';
 
 const TYPE_ICONS: Record<ComponentType, string> = {
@@ -28,6 +30,7 @@ const TYPE_ICONS: Record<ComponentType, string> = {
 };
 
 type InteractionMode = 'move' | 'resize';
+type ListKind = 'bullet' | 'number';
 
 interface Interaction {
   id: string;
@@ -40,7 +43,17 @@ interface Interaction {
   initialHeight: number;
 }
 
+interface AlignmentGuide {
+  orientation: 'vertical' | 'horizontal';
+  positionMm: number;
+}
+
 const CSS_MM_IN_PX = 96 / 25.4;
+const SNAP_MM = 1.5;
+const INDENT_STEP_MM = 4;
+const MAX_INDENT_MM = 40;
+const BULLET_PREFIXES = ['• ', '○ ', '■ ', '– '];
+const NUMBER_PREFIX_RE = /^(?:\d+|[a-z]|[ivxlcdm]+)\.\s+/i;
 
 @Component({
   selector: 'app-editor-page',
@@ -62,10 +75,23 @@ export class EditorPage {
   readonly pickerCols = signal(4);
   readonly pickerRows = signal(4);
 
+  readonly alignmentGuides = signal<AlignmentGuide[]>([]);
+  readonly openMenu = signal<'spacing' | null>(null);
+  readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
       this.store.createNew();
+
+      const size = this.route.snapshot.queryParamMap.get('size') as PageSize | null;
+      if (size && size in PAGE_SIZES) {
+        this.store.setPageFormat(size);
+      }
+      const orientation = this.route.snapshot.queryParamMap.get('orientation');
+      if (orientation === 'landscape') {
+        this.store.setOrientation('landscape');
+      }
       return;
     }
 
@@ -143,8 +169,97 @@ export class EditorPage {
   }
 
   @HostListener('document:click')
-  closeTablePicker(): void {
+  closeFloatingUi(): void {
     this.tablePickerOpen.set(false);
+    this.openMenu.set(null);
+  }
+
+  paragraphToolsEnabled(): boolean {
+    const selected = this.store.selectedElement();
+    return !!selected && (selected.type === 'text' || selected.type === 'link');
+  }
+
+  currentAlignment(): TextAlignment {
+    return this.store.selectedElement()?.style?.alignment ?? 'left';
+  }
+
+  currentLineHeight(): number {
+    return this.store.selectedElement()?.style?.lineHeight ?? 1.15;
+  }
+
+  toggleMenu(menu: 'spacing', event: Event): void {
+    event.stopPropagation();
+    this.openMenu.update((current) => (current === menu ? null : menu));
+  }
+
+  setAlignment(alignment: TextAlignment): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    this.store.updateStyle(selected.id, { alignment });
+    this.status.set('Alineación actualizada');
+  }
+
+  increaseIndent(): void {
+    this.adjustIndent(INDENT_STEP_MM);
+  }
+
+  decreaseIndent(): void {
+    this.adjustIndent(-INDENT_STEP_MM);
+  }
+
+  setLineHeight(value: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    this.store.updateStyle(selected.id, { lineHeight: value });
+    this.openMenu.set(null);
+    this.status.set(`Interlineado ${value}`);
+  }
+
+  toggleList(kind: ListKind): void {
+    if (kind === 'bullet') {
+      this.applyListStyle('bullet', '•');
+      return;
+    }
+    this.applyListStyle('number', '1.');
+  }
+
+  private applyListStyle(kind: ListKind, marker: string): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+
+    const value = selected.content?.value ?? '';
+    const lines = value.length ? value.split('\n') : [''];
+    const stripped = lines.map((line) => stripListPrefix(line));
+    const alreadyApplied =
+      kind === 'bullet'
+        ? lines.every((line) => line.startsWith(`${marker} `) || !line.trim())
+        : lines.every((line) => NUMBER_PREFIX_RE.test(line) || !line.trim());
+
+    const next = alreadyApplied
+      ? stripped.join('\n')
+      : kind === 'bullet'
+        ? stripped
+            .map((line) => (line.trim() ? `${marker} ${line}` : line))
+            .join('\n')
+        : stripped
+            .map((line, index) =>
+              line.trim() ? `${formatListMarker(marker, index)} ${line}` : line,
+            )
+            .join('\n');
+
+    this.store.updateContent(selected.id, { value: next });
+    this.openMenu.set(null);
+    this.status.set(
+      kind === 'bullet' ? 'Viñetas actualizadas' : 'Numeración actualizada',
+    );
+  }
+
+  private adjustIndent(delta: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    const next = clamp((selected.style?.padding ?? 0) + delta, 0, MAX_INDENT_MM);
+    this.store.updateStyle(selected.id, { padding: next });
+    this.status.set('Sangría actualizada');
   }
 
   tableRows(element: DesignComponent): number {
@@ -351,23 +466,9 @@ export class EditorPage {
       (event.clientY - this.interaction.startClientY) / CSS_MM_IN_PX;
 
     if (this.interaction.mode === 'move') {
-      const selected = this.store.selectedElement();
-      if (!selected) return;
-      const bounds = this.store.getElementBounds(selected.id);
-      const maxX = bounds.width - selected.position.width;
-      const maxY = bounds.height - selected.position.height;
-      this.store.updatePosition(this.interaction.id, {
-        x: clamp(this.interaction.initialX + deltaX, 0, maxX),
-        y: clamp(this.interaction.initialY + deltaY, 0, maxY),
-      });
+      this.applyMove(deltaX, deltaY);
     } else {
-      const bounds = this.store.getElementBounds(this.interaction.id);
-      const maxWidth = bounds.width - this.interaction.initialX;
-      const maxHeight = bounds.height - this.interaction.initialY;
-      this.store.updatePosition(this.interaction.id, {
-        width: clamp(this.interaction.initialWidth + deltaX, 5, maxWidth),
-        height: clamp(this.interaction.initialHeight + deltaY, 5, maxHeight),
-      });
+      this.applyResize(deltaX, deltaY);
     }
 
     this.status.set('Cambios sin guardar');
@@ -376,6 +477,130 @@ export class EditorPage {
   @HostListener('document:pointerup')
   endInteraction(): void {
     this.interaction = null;
+    this.alignmentGuides.set([]);
+  }
+
+  /** Mueve el elemento con imán hacia bordes/centros y sin superponerse. */
+  private applyMove(deltaX: number, deltaY: number): void {
+    const interaction = this.interaction!;
+    const element = this.store.selectedElement();
+    if (!element) return;
+
+    const bounds = this.store.getElementBounds(interaction.id);
+    const width = interaction.initialWidth;
+    const height = interaction.initialHeight;
+    const maxX = Math.max(0, bounds.width - width);
+    const maxY = Math.max(0, bounds.height - height);
+    let x = clamp(interaction.initialX + deltaX, 0, maxX);
+    let y = clamp(interaction.initialY + deltaY, 0, maxY);
+
+    const siblings = this.store.getSiblings(interaction.id);
+
+    // Anclas de destino: bordes y centros de hermanos, más los del lienzo.
+    const verticalTargets = [0, bounds.width / 2, bounds.width];
+    const horizontalTargets = [0, bounds.height / 2, bounds.height];
+    for (const sibling of siblings) {
+      const p = sibling.position;
+      verticalTargets.push(p.x, p.x + p.width / 2, p.x + p.width);
+      horizontalTargets.push(p.y, p.y + p.height / 2, p.y + p.height);
+    }
+
+    const ownVertical = [0, width / 2, width];
+    const ownHorizontal = [0, height / 2, height];
+
+    let snapV: { shift: number; line: number } | null = null;
+    for (const target of verticalTargets) {
+      for (const own of ownVertical) {
+        const shift = target - (x + own);
+        if (
+          Math.abs(shift) <= SNAP_MM &&
+          (!snapV || Math.abs(shift) < Math.abs(snapV.shift))
+        ) {
+          snapV = { shift, line: target };
+        }
+      }
+    }
+
+    let snapH: { shift: number; line: number } | null = null;
+    for (const target of horizontalTargets) {
+      for (const own of ownHorizontal) {
+        const shift = target - (y + own);
+        if (
+          Math.abs(shift) <= SNAP_MM &&
+          (!snapH || Math.abs(shift) < Math.abs(snapH.shift))
+        ) {
+          snapH = { shift, line: target };
+        }
+      }
+    }
+
+    if (snapV) x = clamp(x + snapV.shift, 0, maxX);
+    if (snapH) y = clamp(y + snapH.shift, 0, maxY);
+
+    // Sin superposición: si choca, desliza por un solo eje o se detiene.
+    const collidesAt = (px: number, py: number) =>
+      siblings.some((sibling) =>
+        rectsOverlap(px, py, width, height, sibling.position),
+      );
+    if (collidesAt(x, y)) {
+      if (!collidesAt(x, element.position.y)) {
+        y = element.position.y;
+        snapH = null;
+      } else if (!collidesAt(element.position.x, y)) {
+        x = element.position.x;
+        snapV = null;
+      } else {
+        x = element.position.x;
+        y = element.position.y;
+        snapV = null;
+        snapH = null;
+      }
+    }
+
+    // Solo dibuja la guía si tras resolver colisiones sigue alineado.
+    const offset = this.store.getParentOffset(interaction.id);
+    const guides: AlignmentGuide[] = [];
+    if (snapV && ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)) {
+      guides.push({ orientation: 'vertical', positionMm: offset.x + snapV.line });
+    }
+    if (snapH && ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)) {
+      guides.push({ orientation: 'horizontal', positionMm: offset.y + snapH.line });
+    }
+    this.alignmentGuides.set(guides);
+
+    this.store.updatePosition(interaction.id, { x, y });
+  }
+
+  /** Redimensiona sin invadir a los hermanos. */
+  private applyResize(deltaX: number, deltaY: number): void {
+    const interaction = this.interaction!;
+    const element = this.store.selectedElement();
+    if (!element) return;
+
+    const bounds = this.store.getElementBounds(interaction.id);
+    const maxWidth = bounds.width - interaction.initialX;
+    const maxHeight = bounds.height - interaction.initialY;
+    let width = clamp(interaction.initialWidth + deltaX, 5, Math.max(5, maxWidth));
+    let height = clamp(interaction.initialHeight + deltaY, 5, Math.max(5, maxHeight));
+
+    const siblings = this.store.getSiblings(interaction.id);
+    const x = interaction.initialX;
+    const y = interaction.initialY;
+    const collidesAt = (w: number, h: number) =>
+      siblings.some((sibling) => rectsOverlap(x, y, w, h, sibling.position));
+
+    if (collidesAt(width, height)) {
+      if (!collidesAt(width, element.position.height)) {
+        height = element.position.height;
+      } else if (!collidesAt(element.position.width, height)) {
+        width = element.position.width;
+      } else {
+        width = element.position.width;
+        height = element.position.height;
+      }
+    }
+
+    this.store.updatePosition(interaction.id, { width, height });
   }
 
   updateNumber(
@@ -524,6 +749,23 @@ export class EditorPage {
   save(): void {
     this.store.save();
     this.status.set('Formato guardado localmente');
+    notifySuccess(
+      'Formato guardado',
+      this.store.template().document.name || undefined,
+    );
+  }
+
+  async createNew(): Promise<void> {
+    const confirmed = await confirmAction({
+      title: '¿Crear un formato nuevo?',
+      text: 'Los cambios que no hayas guardado se perderán.',
+      confirmText: 'Sí, crear nuevo',
+    });
+    if (!confirmed) return;
+
+    this.store.createNew();
+    this.status.set('Borrador sin guardar');
+    notifySuccess('Formato nuevo listo');
   }
 
   exportJson(): void {
@@ -539,14 +781,67 @@ export class EditorPage {
     link.click();
     URL.revokeObjectURL(url);
     this.status.set('Contrato JSON 2.1 exportado');
+    notifySuccess('JSON exportado', `${template.document.name || 'plantilla'}.json`);
   }
 
-  remove(): void {
+  async remove(): Promise<void> {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const confirmed = await confirmAction({
+      title: '¿Eliminar componente?',
+      text: `Se eliminará «${selected.name}» de la hoja.`,
+      confirmText: 'Sí, eliminar',
+    });
+    if (!confirmed) return;
+
     this.store.removeSelected();
     this.status.set('Componente eliminado');
+    notifySuccess('Componente eliminado');
   }
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function stripListPrefix(line: string): string {
+  for (const prefix of BULLET_PREFIXES) {
+    if (line.startsWith(prefix)) {
+      return line.slice(prefix.length);
+    }
+  }
+  return line.replace(NUMBER_PREFIX_RE, '');
+}
+
+function formatListMarker(marker: string, index: number): string {
+  if (marker === '1.' || marker.startsWith('1')) {
+    return `${index + 1}.`;
+  }
+  if (marker === 'a.' || marker.startsWith('a')) {
+    return `${String.fromCharCode(97 + (index % 26))}.`;
+  }
+  if (marker === 'i.' || marker.startsWith('i')) {
+    return `${toRoman(index + 1)}.`;
+  }
+  return marker.replace(/\.$/, '') + '.';
+}
+
+function toRoman(value: number): string {
+  const numerals: [number, string][] = [
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let remaining = value;
+  let result = '';
+  for (const [amount, symbol] of numerals) {
+    while (remaining >= amount) {
+      result += symbol;
+      remaining -= amount;
+    }
+  }
+  return result || 'i';
 }

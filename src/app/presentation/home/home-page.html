@@ -1,34 +1,98 @@
 <div class="home-shell">
   <header class="hero">
     <div class="hero-text">
-      <span class="brand-mark">P</span>
+      <span class="brand-mark">
+        <img src="btw-logo.png" alt="Logo BTW" />
+      </span>
       <div>
         <h1>BTW Document Designer</h1>
         <p>Crea un formato nuevo o continúa editando uno existente.</p>
       </div>
     </div>
-
-    <div class="hero-actions">
-      <button class="button primary" type="button" (click)="createBlank()">
-        + Crear formato en blanco
-      </button>
-    </div>
   </header>
+
+  <section class="new-section">
+    <h2>Nueva</h2>
+    <div class="starter-row">
+      <button class="starter blank" type="button" (click)="createBlank()">
+        <span class="starter-frame">
+          <span
+            class="starter-page"
+            [style.width.px]="starterDims({ size: 'A4' }).width"
+            [style.height.px]="starterDims({ size: 'A4' }).height"
+          ></span>
+        </span>
+        <small>Documento en blanco</small>
+      </button>
+
+      @for (starter of starters; track starter.label) {
+        <button class="starter" type="button" (click)="createFrom(starter)">
+          <span class="starter-frame">
+            <span
+              class="starter-page"
+              [class.pos-page]="isStarterPos(starter)"
+              [style.width.px]="starterDims(starter).width"
+              [style.height.px]="starterDims(starter).height"
+            >
+              <span class="skeleton-line title"></span>
+              <span class="skeleton-line"></span>
+              <span class="skeleton-line"></span>
+              <span class="skeleton-line short"></span>
+            </span>
+          </span>
+          <small>{{ starter.label }}</small>
+        </button>
+      }
+    </div>
+  </section>
 
   <main class="content">
     <div class="list-header">
-      <h2>Mis formatos</h2>
-      <input
-        class="search"
-        type="search"
-        placeholder="Buscar formatos…"
-        aria-label="Buscar formatos"
-        [value]="query()"
-        (input)="search($event)"
-      />
+      <div class="filter-pills">
+        <button class="pill active" type="button">Recientes</button>
+      </div>
+
+      <div class="header-tools">
+        <input
+          class="search"
+          type="search"
+          placeholder="Buscar un formato…"
+          aria-label="Buscar formatos"
+          [value]="query()"
+          (input)="search($event)"
+        />
+
+        <div class="view-toggle" role="group" aria-label="Cambiar vista">
+          <button
+            type="button"
+            title="Vista de lista"
+            aria-label="Vista de lista"
+            [class.active]="view() === 'list'"
+            (click)="setView('list')"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M3 5h2M3 10h2M3 15h2M8 5h9M8 10h9M8 15h9" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Vista de plantillas"
+            aria-label="Vista de plantillas"
+            [class.active]="view() === 'grid'"
+            (click)="setView('grid')"
+          >
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="3" width="6" height="6" rx="1" />
+              <rect x="11" y="3" width="6" height="6" rx="1" />
+              <rect x="3" y="11" width="6" height="6" rx="1" />
+              <rect x="11" y="11" width="6" height="6" rx="1" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
 
-    @if (filtered().length > 0) {
+    @if (filtered().length > 0 && view() === 'grid') {
       <div class="card-grid">
         @for (template of filtered(); track template.document.id) {
           <button class="card" type="button" (click)="open(template)">
@@ -52,7 +116,7 @@
             <div class="card-info">
               <strong>{{ template.document.name || 'Sin título' }}</strong>
               <small>{{ formatLabel(template) }}</small>
-              <small>Modificado: {{ updatedLabel(template) }}</small>
+              <small>{{ updatedLabel(template) }}</small>
             </div>
 
             <span
@@ -60,6 +124,54 @@
               role="button"
               tabindex="0"
               aria-label="Eliminar formato"
+              title="Eliminar formato"
+              (click)="remove($event, template)"
+              (keydown.enter)="remove($event, template)"
+            >
+              ✕
+            </span>
+          </button>
+        }
+      </div>
+    } @else if (filtered().length > 0) {
+      <div class="file-list">
+        <div class="file-list-head">
+          <span>Nombre</span>
+          <span>Fecha de modificación</span>
+        </div>
+
+        @for (template of filtered(); track template.document.id) {
+          <button class="file-row" type="button" (click)="open(template)">
+            <span class="file-icon" [class.pos]="isPos(template)" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                @if (isPos(template)) {
+                  <path d="M6 3h12v18l-2-1.5L14 21l-2-1.5L10 21l-2-1.5L6 21V3z" />
+                  <path d="M9 8h6M9 12h6" />
+                } @else {
+                  <path d="M6 2.5h8L19 7.5v14H6v-19z" />
+                  <path d="M14 2.5v5h5" />
+                  <path d="M9 12h6M9 15.5h6" />
+                }
+              </svg>
+            </span>
+
+            <span class="file-name">
+              <strong>{{ template.document.name || 'Sin título' }}</strong>
+              <small>
+                {{ formatLabel(template) }} ·
+                {{ template.components.length }}
+                {{ template.components.length === 1 ? 'componente' : 'componentes' }}
+              </small>
+            </span>
+
+            <span class="file-date">{{ updatedLabel(template) }}</span>
+
+            <span
+              class="file-remove"
+              role="button"
+              tabindex="0"
+              aria-label="Eliminar formato"
+              title="Eliminar formato"
               (click)="remove($event, template)"
               (keydown.enter)="remove($event, template)"
             >

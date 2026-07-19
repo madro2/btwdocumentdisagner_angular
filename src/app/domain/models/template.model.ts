@@ -15,7 +15,7 @@ export type TextAlignment = 'left' | 'center' | 'right' | 'justify';
 export type VerticalAlignment = 'top' | 'center' | 'bottom';
 export type ImageFit = 'contain' | 'cover' | 'fill';
 export type DocumentKind = 'pdf' | 'pos';
-export type PageSize = 'A4' | 'Letter' | 'POS58' | 'POS80';
+export type PageSize = 'A4' | 'Letter' | 'Legal' | 'POS58' | 'POS80';
 export type PageOrientation = 'portrait' | 'landscape';
 /** Regla de repetición al paginar. `lastPage` es extensión del editor. */
 export type RepeatOn = 'allPages' | 'firstPage' | 'lastPage';
@@ -44,6 +44,13 @@ export const PAGE_SIZES: Record<PageSize, PageSizeDefinition> = {
     kind: 'pdf',
     widthMm: 216,
     heightMm: 279,
+    marginsMm: { top: 7, right: 7, bottom: 7, left: 7 },
+  },
+  Legal: {
+    label: 'Oficio · 216 × 356 mm',
+    kind: 'pdf',
+    widthMm: 216,
+    heightMm: 356,
     marginsMm: { top: 7, right: 7, bottom: 7, left: 7 },
   },
   POS58: {

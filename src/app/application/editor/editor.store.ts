@@ -112,6 +112,12 @@ export class EditorStore {
       );
     }
 
+    element.position = findFreePosition(
+      element.position,
+      this.listChildren(parentId),
+      bounds,
+    );
+
     this.templateState.update((template) => {
       if (!parentId) {
         return {
@@ -211,6 +217,15 @@ export class EditorStore {
       },
     };
 
+    const targetSiblings = (
+      parentId ? findElement(elements, parentId)?.components ?? [] : elements
+    ).filter((item) => item.id !== id);
+    movedElement.position = findFreePosition(
+      movedElement.position,
+      targetSiblings,
+      bounds,
+    );
+
     this.templateState.update((template) => {
       const withoutElement = removeElement(template.components, id);
       if (!parentId) {
@@ -246,6 +261,28 @@ export class EditorStore {
   getElementBounds(id: string): { width: number; height: number } {
     return this.getParentBounds(
       findParentId(this.templateState().components, id),
+    );
+  }
+
+  /** Componentes que comparten el mismo padre que `id` (excluyéndolo). */
+  getSiblings(id: string): DesignComponent[] {
+    const components = this.templateState().components;
+    const parentId = findParentId(components, id);
+    return this.listChildren(parentId).filter((element) => element.id !== id);
+  }
+
+  /** Desplazamiento absoluto (en mm de la hoja) del padre de `id`. */
+  getParentOffset(id: string): { x: number; y: number } {
+    const components = this.templateState().components;
+    const parentId = findParentId(components, id);
+    if (!parentId) return { x: 0, y: 0 };
+    return findAbsolutePosition(components, parentId) ?? { x: 0, y: 0 };
+  }
+
+  private listChildren(parentId: string | null): DesignComponent[] {
+    if (!parentId) return this.templateState().components;
+    return (
+      findElement(this.templateState().components, parentId)?.components ?? []
     );
   }
 
@@ -325,6 +362,49 @@ export class EditorStore {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Margen de tolerancia: los bordes pueden tocarse, pero no solaparse. */
+const OVERLAP_EPS_MM = 0.2;
+
+export function rectsOverlap(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  other: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    x < other.x + other.width - OVERLAP_EPS_MM &&
+    x + width > other.x + OVERLAP_EPS_MM &&
+    y < other.y + other.height - OVERLAP_EPS_MM &&
+    y + height > other.y + OVERLAP_EPS_MM
+  );
+}
+
+/** Busca la posición libre más cercana: primero hacia abajo, luego en cuadrícula. */
+function findFreePosition(
+  position: DesignComponent['position'],
+  siblings: DesignComponent[],
+  bounds: { width: number; height: number },
+): DesignComponent['position'] {
+  const occupied = (x: number, y: number) =>
+    siblings.some((sibling) =>
+      rectsOverlap(x, y, position.width, position.height, sibling.position),
+    );
+
+  if (!occupied(position.x, position.y)) return position;
+
+  const step = 2;
+  for (let y = position.y; y + position.height <= bounds.height; y += step) {
+    if (!occupied(position.x, y)) return { ...position, y };
+  }
+  for (let y = 0; y + position.height <= bounds.height; y += step) {
+    for (let x = 0; x + position.width <= bounds.width; x += step) {
+      if (!occupied(x, y)) return { ...position, x, y };
+    }
+  }
+  return position;
 }
 
 function fitElements(
