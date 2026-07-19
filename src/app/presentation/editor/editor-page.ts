@@ -350,10 +350,22 @@ export class EditorPage {
     if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
-          if (column.value) return withSampleData(column.value);
-          if (index === 0) return withSampleData(row.label);
-          if (row.value) return withSampleData(row.value);
-          return row.dataPath ? withSampleData(`{{${row.dataPath}}}`) : '';
+          if (column.value) {
+            return this.previewBindingValue(
+              column.value,
+              column.defaultValue ?? '',
+            );
+          }
+          if (index === 0) return this.previewBindingValue(row.label);
+          if (row.value) {
+            return this.previewBindingValue(row.value, row.defaultValue ?? '');
+          }
+          return row.dataPath
+            ? this.previewBindingValue(
+                `{{${row.dataPath}}}`,
+                row.defaultValue ?? '',
+              )
+            : (row.defaultValue ?? '');
         }),
       );
     }
@@ -363,8 +375,18 @@ export class EditorPage {
       return [
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
-          if (field?.value) return withSampleData(field.value);
-          return field?.dataPath ? withSampleData(`{{${field.dataPath}}}`) : '—';
+          if (field?.value) {
+            return this.previewBindingValue(
+              field.value,
+              field.defaultValue ?? '',
+            );
+          }
+          return field?.dataPath
+            ? this.previewBindingValue(
+                `{{${field.dataPath}}}`,
+                field.defaultValue ?? '',
+              )
+            : '—';
         }),
       ];
     }
@@ -400,6 +422,16 @@ export class EditorPage {
       element.content?.bindings,
       String(element.content?.defaultValue ?? ''),
     );
+  }
+
+  /**
+   * Usa el XML real cuando el usuario ya lo cargó. Los valores de ejemplo se
+   * conservan únicamente para que una plantilla nueva no aparezca vacía.
+   */
+  private previewBindingValue(template: string | undefined, defaultValue = ''): string {
+    const resolved = this.bindings.render(template, {}, {}, defaultValue);
+    if (resolved || this.bindings.hasLoadedXml()) return resolved;
+    return withSampleData(template) || defaultValue;
   }
 
   previewImageSource(element: DesignComponent): string | null {
