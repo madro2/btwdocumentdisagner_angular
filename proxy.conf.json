@@ -1,6 +1,6 @@
 {
   "/DocumentDesignerApi": {
-    "target": "https://localhost:51198",
+    "target": "http://149.130.173.73:5005",
     "secure": false,
     "changeOrigin": true
   }

@@ -2,8 +2,11 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
-import { map } from 'rxjs/operators';
-import { createElement, TableSize } from '../../domain/factories/element.factory';
+import { map, tap } from 'rxjs/operators';
+import {
+  createElement,
+  TableSize,
+} from '../../domain/factories/element.factory';
 import {
   ComponentContent,
   ComponentStyle,
@@ -20,6 +23,10 @@ import {
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
 import { ContractValidatorService } from '../validation/contract-validator.service';
+import {
+  calculateVersionSaveInfo,
+  VersionSaveInfo,
+} from './versioning';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStore {
@@ -55,6 +62,37 @@ export class EditorStore {
   createNew(): void {
     this.templateState.set(this.emptyTemplate());
     this.selectedIdState.set(null);
+  }
+
+  startFromTemplate(template: DesignContract): void {
+    this.templateState.set({
+      ...template,
+      document: {
+        ...template.document,
+        id: crypto.randomUUID(),
+      },
+      updatedAt: new Date().toISOString(),
+    });
+    this.selectedIdState.set(null);
+  }
+
+  startFromSavedTemplate(
+    name: string,
+    version: number,
+  ): Observable<boolean> {
+    return this.repository.list().pipe(
+      map((templates) => {
+        const template = templates.find(
+          (candidate) =>
+            candidate.document.name === name &&
+            (candidate.document.version ?? 1) === version,
+        );
+        if (!template) return false;
+
+        this.startFromTemplate(template);
+        return true;
+      }),
+    );
   }
 
   importContract(raw: unknown): string | null {
@@ -130,7 +168,23 @@ export class EditorStore {
     parentId: string | null = null,
     tableSize?: TableSize,
   ): void {
-    const element = createElement(type, tableSize);
+    this.insertElement(createElement(type, tableSize), position, parentId);
+  }
+
+  /** Inserta un componente ya construido (por ejemplo un bloque prediseñado). */
+  addPrefab(
+    element: DesignComponent,
+    position?: { x: number; y: number },
+    parentId: string | null = null,
+  ): void {
+    this.insertElement(element, position, parentId);
+  }
+
+  private insertElement(
+    element: DesignComponent,
+    position: { x: number; y: number } | undefined,
+    parentId: string | null,
+  ): void {
     const bounds = this.getParentBounds(parentId);
     element.position.width = Math.min(element.position.width, bounds.width);
     element.position.height = Math.min(element.position.height, bounds.height);
@@ -147,6 +201,12 @@ export class EditorStore {
         bounds.height - element.position.height,
       );
     }
+
+    element.position = findFreePosition(
+      element.position,
+      this.listChildren(parentId),
+      bounds,
+    );
 
     this.templateState.update((template) => {
       if (!parentId) {
@@ -216,7 +276,8 @@ export class EditorStore {
     const elements = this.templateState().components;
     const element = findElement(elements, id);
     if (!element) return false;
-    if (parentId && containsId(element.components ?? [], parentId)) return false;
+    if (parentId && containsId(element.components ?? [], parentId))
+      return false;
 
     const currentParentId = findParentId(elements, id);
     if (currentParentId === parentId) return true;
@@ -246,6 +307,15 @@ export class EditorStore {
         ),
       },
     };
+
+    const targetSiblings = (
+      parentId ? (findElement(elements, parentId)?.components ?? []) : elements
+    ).filter((item) => item.id !== id);
+    movedElement.position = findFreePosition(
+      movedElement.position,
+      targetSiblings,
+      bounds,
+    );
 
     this.templateState.update((template) => {
       const withoutElement = removeElement(template.components, id);
@@ -285,6 +355,28 @@ export class EditorStore {
     );
   }
 
+  /** Componentes que comparten el mismo padre que `id` (excluyéndolo). */
+  getSiblings(id: string): DesignComponent[] {
+    const components = this.templateState().components;
+    const parentId = findParentId(components, id);
+    return this.listChildren(parentId).filter((element) => element.id !== id);
+  }
+
+  /** Desplazamiento absoluto (en mm de la hoja) del padre de `id`. */
+  getParentOffset(id: string): { x: number; y: number } {
+    const components = this.templateState().components;
+    const parentId = findParentId(components, id);
+    if (!parentId) return { x: 0, y: 0 };
+    return findAbsolutePosition(components, parentId) ?? { x: 0, y: 0 };
+  }
+
+  private listChildren(parentId: string | null): DesignComponent[] {
+    if (!parentId) return this.templateState().components;
+    return (
+      findElement(this.templateState().components, parentId)?.components ?? []
+    );
+  }
+
   removeSelected(): void {
     const id = this.selectedIdState();
     if (!id) return;
@@ -304,21 +396,55 @@ export class EditorStore {
     return this.repository.save(this.templateState());
   }
 
+  versionSaveInfo(): Observable<VersionSaveInfo> {
+    const current = this.templateState();
+    return this.repository.list().pipe(
+      map((templates) => calculateVersionSaveInfo(current, templates)),
+    );
+  }
+
+  saveAsNewVersion(version: number): Observable<DesignContract> {
+    const now = new Date().toISOString();
+    const versionedTemplate: DesignContract = {
+      ...this.templateState(),
+      document: {
+        ...this.templateState().document,
+        id: crypto.randomUUID(),
+        version,
+      },
+      updatedAt: now,
+    };
+
+    return this.repository.save(versionedTemplate).pipe(
+      tap(() => {
+        this.templateState.set(versionedTemplate);
+        this.selectedIdState.set(null);
+      }),
+      map(() => versionedTemplate),
+    );
+  }
+
   loadById(id: string): Observable<boolean> {
     return this.repository.load(id).pipe(
-      map(template => {
+      map((template) => {
         if (!template) return false;
         this.templateState.set(template);
         this.selectedIdState.set(null);
         return true;
-      })
+      }),
     );
   }
 
   listTemplates(): Observable<DesignContract[]> {
-    return this.repository.list().pipe(
-      map(templates => templates.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')))
-    );
+    return this.repository
+      .list()
+      .pipe(
+        map((templates) =>
+          templates.sort((a, b) =>
+            (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
+          ),
+        ),
+      );
   }
 
   removeTemplate(id: string): Observable<void> {
@@ -328,7 +454,10 @@ export class EditorStore {
   uploadImage(file: File): Observable<{ id: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
+    return this.http.post<{ id: string }>(
+      `${environment.apiBaseUrl}/Images`,
+      formData,
+    );
   }
 
   private updateById(
@@ -381,6 +510,49 @@ export class EditorStore {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Margen de tolerancia: los bordes pueden tocarse, pero no solaparse. */
+const OVERLAP_EPS_MM = 0.2;
+
+export function rectsOverlap(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  other: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    x < other.x + other.width - OVERLAP_EPS_MM &&
+    x + width > other.x + OVERLAP_EPS_MM &&
+    y < other.y + other.height - OVERLAP_EPS_MM &&
+    y + height > other.y + OVERLAP_EPS_MM
+  );
+}
+
+/** Busca la posición libre más cercana: primero hacia abajo, luego en cuadrícula. */
+function findFreePosition(
+  position: DesignComponent['position'],
+  siblings: DesignComponent[],
+  bounds: { width: number; height: number },
+): DesignComponent['position'] {
+  const occupied = (x: number, y: number) =>
+    siblings.some((sibling) =>
+      rectsOverlap(x, y, position.width, position.height, sibling.position),
+    );
+
+  if (!occupied(position.x, position.y)) return position;
+
+  const step = 2;
+  for (let y = position.y; y + position.height <= bounds.height; y += step) {
+    if (!occupied(position.x, y)) return { ...position, y };
+  }
+  for (let y = 0; y + position.height <= bounds.height; y += step) {
+    for (let x = 0; x + position.width <= bounds.width; x += step) {
+      if (!occupied(x, y)) return { ...position, x, y };
+    }
+  }
+  return position;
 }
 
 function fitElements(
@@ -442,11 +614,7 @@ function findAbsolutePosition(
       y: offset.y + element.position.y,
     };
     if (element.id === id) return position;
-    const nested = findAbsolutePosition(
-      element.components ?? [],
-      id,
-      position,
-    );
+    const nested = findAbsolutePosition(element.components ?? [], id, position);
     if (nested) return nested;
   }
   return null;
@@ -468,8 +636,7 @@ function collectIds(elements: DesignComponent[]): string[] {
 
 function containsId(elements: DesignComponent[], id: string): boolean {
   return elements.some(
-    (element) =>
-      element.id === id || containsId(element.components ?? [], id),
+    (element) => element.id === id || containsId(element.components ?? [], id),
   );
 }
 

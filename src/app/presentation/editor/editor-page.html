@@ -1,9 +1,11 @@
 <div class="editor-shell">
   <header class="toolbar">
     <div class="brand">
-      <span class="brand-mark">P</span>
+      <span class="brand-mark">
+        <img src="btw-logo.png" alt="Logo BTW" />
+      </span>
       <div>
-        <strong>BTW Document Designer</strong>
+        <strong>Document Designer</strong>
         <small>Editor de plantillas</small>
       </div>
     </div>
@@ -42,8 +44,7 @@
   </header>
 
   <div class="page-toolbar">
-    <div class="page-control">
-      <span class="control-label">Documento</span>
+    <div class="toolbar-group">
       <div class="segmented">
         <button
           type="button"
@@ -62,55 +63,57 @@
       </div>
     </div>
 
-    <div class="page-control">
-      <span class="control-label">Tamaño</span>
-      <select
-        aria-label="Tamaño de la hoja"
-        [value]="store.template().page.size"
-        (change)="setPageFormat($event)"
-      >
-        @for (option of formatOptions(); track option.id) {
-          <option [value]="option.id">{{ option.label }}</option>
-        }
-      </select>
-    </div>
-
-    @if (documentKindOf(store.template().page) === 'pdf') {
+    <div class="toolbar-group">
       <div class="page-control">
-        <span class="control-label">Orientación</span>
+        <span class="control-label">Tamaño</span>
         <select
-          aria-label="Orientación de la hoja"
-          [value]="store.template().page.orientation"
-          (change)="setOrientation($event)"
+          aria-label="Tamaño de la hoja"
+          [value]="store.template().page.size"
+          (change)="setPageFormat($event)"
         >
-          <option value="portrait">Vertical</option>
-          <option value="landscape">Horizontal</option>
+          @for (option of formatOptions(); track option.id) {
+            <option [value]="option.id">{{ option.label }}</option>
+          }
         </select>
       </div>
-    } @else {
+
+      @if (documentKindOf(store.template().page) === 'pdf') {
+        <div class="page-control">
+          <span class="control-label">Orientación</span>
+          <select
+            aria-label="Orientación de la hoja"
+            [value]="store.template().page.orientation"
+            (change)="setOrientation($event)"
+          >
+            <option value="portrait">Vertical</option>
+            <option value="landscape">Horizontal</option>
+          </select>
+        </div>
+      } @else {
+        <div class="page-control">
+          <span class="control-label">Alto (mm)</span>
+          <input
+            class="page-height"
+            type="number"
+            min="30"
+            max="3000"
+            aria-label="Alto de la tirilla en milímetros"
+            [value]="store.template().page.heightMm"
+            (change)="updatePageHeight($event)"
+          />
+        </div>
+      }
+
       <div class="page-control">
-        <span class="control-label">Alto (mm)</span>
+        <span class="control-label">Fondo</span>
         <input
-          class="page-height"
-          type="number"
-          min="30"
-          max="3000"
-          aria-label="Alto de la tirilla en milímetros"
-          [value]="store.template().page.heightMm"
-          (change)="updatePageHeight($event)"
+          class="page-background"
+          type="color"
+          aria-label="Color de fondo de la hoja"
+          [value]="store.template().page.background"
+          (input)="updatePageBackground($event)"
         />
       </div>
-    }
-
-    <div class="page-control">
-      <span class="control-label">Fondo</span>
-      <input
-        class="page-background"
-        type="color"
-        aria-label="Color de fondo de la hoja"
-        [value]="store.template().page.background"
-        (input)="updatePageBackground($event)"
-      />
     </div>
 
     <span class="page-summary">
@@ -122,7 +125,7 @@
     <aside class="palette panel">
       <div class="panel-heading">
         <span>Componentes</span>
-        <small>Arrástralos hasta la hoja</small>
+        <small>Arrastra o haz clic para agregar</small>
       </div>
 
       <button
@@ -132,7 +135,7 @@
         (dragstart)="startPaletteDrag($event, 'text')"
         (click)="add('text')"
       >
-        <span class="item-icon text-icon">T</span>
+        <span class="item-icon text-icon" aria-hidden="true">T</span>
         <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
       </button>
 
@@ -156,7 +159,13 @@
         (dragstart)="startPaletteDrag($event, 'image')"
         (click)="add('image')"
       >
-        <span class="item-icon">▧</span>
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="3" y="5" width="18" height="14" rx="2" />
+            <circle cx="8.5" cy="10" r="1.5" />
+            <path d="M21 16l-5.5-5.5L7 19" />
+          </svg>
+        </span>
         <span><strong>Imagen</strong><small>Logo o código QR</small></span>
       </button>
 
@@ -167,7 +176,12 @@
         (dragstart)="startPaletteDrag($event, 'container')"
         (click)="add('container')"
       >
-        <span class="item-icon">□</span>
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <path d="M4 10h16" />
+          </svg>
+        </span>
         <span><strong>Contenedor</strong><small>Agrupa contenido</small></span>
       </button>
 
@@ -179,7 +193,12 @@
           (dragstart)="startPaletteDrag($event, 'table')"
           (click)="toggleTablePicker($event)"
         >
-          <span class="item-icon">▦</span>
+          <span class="item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
+            </svg>
+          </span>
           <span><strong>Tabla</strong><small>Elige columnas y filas</small></span>
         </button>
 
@@ -214,9 +233,37 @@
         (dragstart)="startPaletteDrag($event, 'link')"
         (click)="add('link')"
       >
-        <span class="item-icon">↗</span>
+        <span class="item-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M10 13a5 5 0 0 0 7.54.54l1.92-1.92a5 5 0 0 0-7.07-7.07L10.9 6" />
+            <path d="M14 11a5 5 0 0 0-7.54-.54L4.54 12.4a5 5 0 0 0 7.07 7.07L13.1 18" />
+          </svg>
+        </span>
         <span><strong>Vínculo</strong><small>Texto con URL</small></span>
       </button>
+
+      <div class="panel-heading blocks-heading">
+        <span>Contenedores prediseñados</span>
+        <small>Composiciones genéricas listas para editar</small>
+      </div>
+
+      @for (preset of containerPresets; track preset.kind) {
+        <button
+          class="palette-item block-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startContainerPresetDrag($event, preset.kind)"
+          (click)="addContainerPreset(preset.kind)"
+        >
+          <span class="item-icon block-icon" aria-hidden="true">
+            {{ preset.icon }}
+          </span>
+          <span>
+            <strong>{{ preset.label }}</strong>
+            <small>{{ preset.hint }}</small>
+          </span>
+        </button>
+      }
 
       <section class="help-card">
         <strong>Cómo empezar</strong>
@@ -268,6 +315,7 @@
                 [style.font-weight]="element.style?.bold ? 700 : 400"
                 [style.color]="element.style?.color ?? '#111827'"
                 [style.text-align]="element.style?.alignment ?? 'left'"
+                [style.line-height]="element.style?.lineHeight ?? 1.2"
               >
                 {{ previewText(element) }}
               </div>
@@ -296,8 +344,9 @@
                 [style.font-weight]="element.style?.bold ? 700 : 400"
                 [style.color]="element.style?.color ?? '#1d4ed8'"
                 [style.text-align]="element.style?.alignment ?? 'left'"
+                [style.line-height]="element.style?.lineHeight ?? 1.2"
               >
-                {{ element.content?.value }}
+                {{ previewText(element.content?.value) }}
               </div>
             }
 
@@ -441,6 +490,16 @@
           />
         }
 
+        @for (guide of alignmentGuides(); track $index) {
+          <div
+            class="align-guide"
+            [class.vertical]="guide.orientation === 'vertical'"
+            [class.horizontal]="guide.orientation === 'horizontal'"
+            [style.left.mm]="guide.orientation === 'vertical' ? guide.positionMm : null"
+            [style.top.mm]="guide.orientation === 'horizontal' ? guide.positionMm : null"
+          ></div>
+        }
+
         @if (store.template().components.length === 0) {
           <div class="empty-page">
             <span>+</span>
@@ -481,19 +540,20 @@
         <section class="property-section">
           <h3>Agrupación</h3>
           <label class="field">
-            Componente padre
+            Dentro de
             <select
               [value]="store.selectedParentId() ?? ''"
               (change)="changeParent($event)"
             >
-              <option value="">Hoja (sin padre)</option>
+              <option value="">Ninguno · directo en la hoja</option>
               @for (container of store.availableParents(); track container.id) {
                 <option [value]="container.id">{{ container.name }}</option>
               }
             </select>
           </label>
           <p class="hint">
-            Las coordenadas de un componente hijo son relativas a su contenedor.
+            Elige un contenedor para agrupar este componente dentro de él; sus
+            coordenadas X e Y pasarán a medirse desde la esquina del contenedor.
           </p>
         </section>
 
@@ -571,9 +631,38 @@
               </label>
               <p class="hint">Cada elemento de la colección genera una fila.</p>
             } @else if (tableMode(selected) === 'fixedRows') {
+              @for (row of fixedRows(selected); track $index) {
+                <div class="column-row">
+                  <input
+                    type="text"
+                    placeholder="Etiqueta"
+                    aria-label="Etiqueta de la fila"
+                    [value]="row.label ?? ''"
+                    (input)="updateFixedRow($index, 'label', $event)"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Ruta XML"
+                    aria-label="Ruta XML de la fila"
+                    [value]="row.dataPath ?? ''"
+                    (input)="updateFixedRow($index, 'dataPath', $event)"
+                  />
+                  <button
+                    class="column-remove"
+                    type="button"
+                    aria-label="Eliminar fila"
+                    (click)="removeFixedRow($index)"
+                  >
+                    ✕
+                  </button>
+                </div>
+              }
+              <button class="format-button" type="button" (click)="addFixedRow()">
+                + Agregar fila
+              </button>
               <p class="hint">
-                Tabla de filas fijas: cada fila del contrato define su etiqueta y
-                valor.
+                Cada fila muestra su etiqueta a la izquierda y el valor de la
+                ruta XML a la derecha.
               </p>
             } @else {
               <p class="hint">
@@ -582,6 +671,7 @@
             }
           </section>
 
+          @if (tableMode(selected) !== 'fixedRows') {
           <section class="property-section">
             <h3>Columnas</h3>
             @for (column of tableColumns(selected) ?? []; track column.id) {
@@ -614,6 +704,7 @@
               + Agregar columna
             </button>
           </section>
+          }
         }
 
         @if (selected.type === 'text' || selected.type === 'link' || selected.type === 'table') {
@@ -633,6 +724,168 @@
                 <strong>B</strong> Negrita
               </button>
             }
+          </section>
+        }
+
+        @if (selected.type === 'text' || selected.type === 'link') {
+          <section class="property-section paragraph-section">
+            <h3>Párrafo</h3>
+
+            <div class="paragraph-group">
+              <div class="ribbon-body">
+                <div class="ribbon-row">
+                  <button
+                    class="ribbon-btn"
+                    type="button"
+                    title="Viñetas"
+                    aria-label="Viñetas"
+                    (click)="toggleList('bullet')"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="3.5" cy="5" r="1.6" class="accent" />
+                      <circle cx="3.5" cy="10" r="1.6" class="accent" />
+                      <circle cx="3.5" cy="15" r="1.6" class="accent" />
+                      <path d="M7 5h11M7 10h11M7 15h11" />
+                    </svg>
+                  </button>
+
+                  <button
+                    class="ribbon-btn"
+                    type="button"
+                    title="Numeración"
+                    aria-label="Numeración"
+                    (click)="toggleList('number')"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <text x="1" y="6.5" class="accent num">1</text>
+                      <text x="1" y="11.5" class="accent num">2</text>
+                      <text x="1" y="16.5" class="accent num">3</text>
+                      <path d="M7 5h11M7 10h11M7 15h11" />
+                    </svg>
+                  </button>
+
+                  <span class="ribbon-divider" aria-hidden="true"></span>
+
+                  <button
+                    class="ribbon-btn"
+                    type="button"
+                    title="Disminuir sangría"
+                    aria-label="Disminuir sangría"
+                    (click)="decreaseIndent()"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M9 4H18M9 10H18M9 16H18" />
+                      <path class="accent" d="M7 10H2m0 0l2.5-2.5M2 10l2.5 2.5" />
+                    </svg>
+                  </button>
+                  <button
+                    class="ribbon-btn"
+                    type="button"
+                    title="Aumentar sangría"
+                    aria-label="Aumentar sangría"
+                    (click)="increaseIndent()"
+                  >
+                    <svg viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M9 4H18M9 10H18M9 16H18" />
+                      <path class="accent" d="M2 10h5m0 0L4.5 7.5M7 10L4.5 12.5" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div class="ribbon-row">
+                  <div class="ribbon-align">
+                    <button
+                      class="ribbon-btn"
+                      type="button"
+                      title="Alinear a la izquierda"
+                      aria-label="Alinear a la izquierda"
+                      [class.active]="currentAlignment() === 'left'"
+                      (click)="setAlignment('left')"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M2 4h16M2 8h10M2 12h16M2 16h10" />
+                      </svg>
+                    </button>
+                    <button
+                      class="ribbon-btn"
+                      type="button"
+                      title="Centrar"
+                      aria-label="Centrar"
+                      [class.active]="currentAlignment() === 'center'"
+                      (click)="setAlignment('center')"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M2 4h16M5 8h10M2 12h16M5 16h10" />
+                      </svg>
+                    </button>
+                    <button
+                      class="ribbon-btn"
+                      type="button"
+                      title="Alinear a la derecha"
+                      aria-label="Alinear a la derecha"
+                      [class.active]="currentAlignment() === 'right'"
+                      (click)="setAlignment('right')"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M2 4h16M8 8h10M2 12h16M8 16h10" />
+                      </svg>
+                    </button>
+                    <button
+                      class="ribbon-btn"
+                      type="button"
+                      title="Justificar"
+                      aria-label="Justificar"
+                      [class.active]="currentAlignment() === 'justify'"
+                      (click)="setAlignment('justify')"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M2 4h16M2 8h16M2 12h16M2 16h16" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  <span class="ribbon-divider" aria-hidden="true"></span>
+
+                  <div class="ribbon-split" [class.open]="openMenu() === 'spacing'">
+                    <button
+                      class="ribbon-btn"
+                      type="button"
+                      title="Espaciado entre líneas y párrafos"
+                      aria-label="Espaciado entre líneas"
+                      (click)="toggleMenu('spacing', $event)"
+                    >
+                      <svg viewBox="0 0 20 20" aria-hidden="true">
+                        <path d="M8 4h10M8 8h10M8 12h10M8 16h10" />
+                        <path class="accent" d="M3 5v10m0-10L1.5 6.5M3 5l1.5 1.5M3 15l-1.5-1.5M3 15l1.5-1.5" />
+                      </svg>
+                    </button>
+                    <button
+                      class="ribbon-chevron"
+                      type="button"
+                      title="Opciones de espaciado"
+                      aria-label="Opciones de espaciado"
+                      (click)="toggleMenu('spacing', $event)"
+                    >
+                      ▾
+                    </button>
+                    @if (openMenu() === 'spacing') {
+                      <div class="ribbon-menu" (click)="$event.stopPropagation()">
+                        @for (option of lineSpacingOptions; track option) {
+                          <button
+                            type="button"
+                            [class.active]="currentLineHeight() === option"
+                            (click)="setLineHeight(option)"
+                          >
+                            {{ option.toFixed(1).replace('.0', '') }}
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+              </div>
+            </div>
           </section>
         }
 
@@ -675,7 +928,7 @@
             </select>
           </label>
           <p class="hint">
-            Se guarda en <code>behavior.repeatOn</code> del contrato 2.1.
+            Define en qué páginas aparecerá este componente al generar el documento.
           </p>
         </section>
 
@@ -686,7 +939,11 @@
         </section>
       } @else {
         <div class="no-selection">
-          <span>↖</span>
+          <span class="no-selection-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+              <path d="M4 4l7 16 2.5-6.5L20 11 4 4z" />
+            </svg>
+          </span>
           <strong>Selecciona un componente</strong>
           <small>Sus propiedades aparecerán en este panel.</small>
         </div>
@@ -695,7 +952,10 @@
   </main>
 
   <footer class="statusbar">
-    <span>{{ status() }}</span>
+    <span class="status-left">
+      <span class="status-dot" [class.saved]="status().includes('guardado')"></span>
+      {{ status() }}
+    </span>
     <span>Esquema {{ store.template().schemaVersion }} · Coordenadas en milímetros</span>
   </footer>
 </div>

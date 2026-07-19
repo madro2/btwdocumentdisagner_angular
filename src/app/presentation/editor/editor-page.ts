@@ -2,18 +2,30 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { EditorStore } from '../../application/editor/editor.store';
+import {
+  EditorStore,
+  rectsOverlap,
+} from '../../application/editor/editor.store';
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
+import {
+  CONTAINER_PRESETS,
+  ContainerPresetKind,
+  createContainerPreset,
+} from '../../domain/factories/block.factory';
+import { confirmAction, notifySuccess } from '../shared/alerts';
+import { sampleCell, withSampleData } from './sample-data';
 import {
   ComponentType,
   DesignComponent,
   DocumentKind,
   documentKindOf,
+  FixedTableRow,
   PAGE_SIZES,
   PageOrientation,
   PageSize,
   RepeatOn,
   TableColumn,
+  TextAlignment,
 } from '../../domain/models/template.model';
 
 const TYPE_ICONS: Record<ComponentType, string> = {
@@ -31,6 +43,7 @@ const TYPE_ICONS: Record<ComponentType, string> = {
 };
 
 type InteractionMode = 'move' | 'resize';
+type ListKind = 'bullet' | 'number';
 
 interface Interaction {
   id: string;
@@ -43,7 +56,21 @@ interface Interaction {
   initialHeight: number;
 }
 
+interface AlignmentGuide {
+  orientation: 'vertical' | 'horizontal';
+  positionMm: number;
+}
+
 const CSS_MM_IN_PX = 96 / 25.4;
+const SNAP_MM = 1.5;
+const INDENT_STEP_MM = 4;
+const MAX_INDENT_MM = 40;
+const BULLET_PREFIXES = ['• ', '○ ', '■ ', '– '];
+const NUMBER_PREFIX_RE = /^(?:\d+|[a-z]|[ivxlcdm]+)\.\s+/i;
+const NATIONAL_INVOICE_TEMPLATE = {
+  name: 'Factura electrónica nacional',
+  version: 1,
+} as const;
 
 @Component({
   selector: 'app-editor-page',
@@ -61,15 +88,63 @@ export class EditorPage {
   private readonly router = inject(Router);
   private interaction: Interaction | null = null;
 
+  readonly containerPresets = CONTAINER_PRESETS;
   readonly pickerRange = Array.from({ length: 8 }, (_, index) => index + 1);
   readonly tablePickerOpen = signal(false);
   readonly pickerCols = signal(4);
   readonly pickerRows = signal(4);
 
+  readonly alignmentGuides = signal<AlignmentGuide[]>([]);
+  readonly openMenu = signal<'spacing' | null>(null);
+  readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+
   constructor() {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
+      const preset = this.route.snapshot.queryParamMap.get('preset');
+      if (preset === 'standard-invoice') {
+        this.status.set('Cargando plantilla desde la base de datos...');
+        this.store
+          .startFromSavedTemplate(
+            NATIONAL_INVOICE_TEMPLATE.name,
+            NATIONAL_INVOICE_TEMPLATE.version,
+          )
+          .subscribe({
+            next: (loaded) => {
+              if (!loaded) {
+                this.status.set(
+                  'La plantilla de factura electrónica nacional no está registrada.',
+                );
+                void this.router.navigate(['/']);
+                return;
+              }
+
+              this.bindings.configure(this.store.template());
+              this.status.set(
+                `Plantilla ${NATIONAL_INVOICE_TEMPLATE.name} v${NATIONAL_INVOICE_TEMPLATE.version} cargada`,
+              );
+            },
+            error: () => {
+              this.status.set(
+                'No fue posible cargar la plantilla desde el servidor.',
+              );
+            },
+          });
+        return;
+      }
+
       this.store.createNew();
+
+      const size = this.route.snapshot.queryParamMap.get(
+        'size',
+      ) as PageSize | null;
+      if (size && size in PAGE_SIZES) {
+        this.store.setPageFormat(size);
+      }
+      const orientation = this.route.snapshot.queryParamMap.get('orientation');
+      if (orientation === 'landscape') {
+        this.store.setOrientation('landscape');
+      }
       this.bindings.configure(this.store.template());
       return;
     }
@@ -151,8 +226,101 @@ export class EditorPage {
   }
 
   @HostListener('document:click')
-  closeTablePicker(): void {
+  closeFloatingUi(): void {
     this.tablePickerOpen.set(false);
+    this.openMenu.set(null);
+  }
+
+  paragraphToolsEnabled(): boolean {
+    const selected = this.store.selectedElement();
+    return !!selected && (selected.type === 'text' || selected.type === 'link');
+  }
+
+  currentAlignment(): TextAlignment {
+    return this.store.selectedElement()?.style?.alignment ?? 'left';
+  }
+
+  currentLineHeight(): number {
+    return this.store.selectedElement()?.style?.lineHeight ?? 1.15;
+  }
+
+  toggleMenu(menu: 'spacing', event: Event): void {
+    event.stopPropagation();
+    this.openMenu.update((current) => (current === menu ? null : menu));
+  }
+
+  setAlignment(alignment: TextAlignment): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    this.store.updateStyle(selected.id, { alignment });
+    this.status.set('Alineación actualizada');
+  }
+
+  increaseIndent(): void {
+    this.adjustIndent(INDENT_STEP_MM);
+  }
+
+  decreaseIndent(): void {
+    this.adjustIndent(-INDENT_STEP_MM);
+  }
+
+  setLineHeight(value: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    this.store.updateStyle(selected.id, { lineHeight: value });
+    this.openMenu.set(null);
+    this.status.set(`Interlineado ${value}`);
+  }
+
+  toggleList(kind: ListKind): void {
+    if (kind === 'bullet') {
+      this.applyListStyle('bullet', '•');
+      return;
+    }
+    this.applyListStyle('number', '1.');
+  }
+
+  private applyListStyle(kind: ListKind, marker: string): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+
+    const value = selected.content?.value ?? '';
+    const lines = value.length ? value.split('\n') : [''];
+    const stripped = lines.map((line) => stripListPrefix(line));
+    const alreadyApplied =
+      kind === 'bullet'
+        ? lines.every((line) => line.startsWith(`${marker} `) || !line.trim())
+        : lines.every((line) => NUMBER_PREFIX_RE.test(line) || !line.trim());
+
+    const next = alreadyApplied
+      ? stripped.join('\n')
+      : kind === 'bullet'
+        ? stripped
+            .map((line) => (line.trim() ? `${marker} ${line}` : line))
+            .join('\n')
+        : stripped
+            .map((line, index) =>
+              line.trim() ? `${formatListMarker(marker, index)} ${line}` : line,
+            )
+            .join('\n');
+
+    this.store.updateContent(selected.id, { value: next });
+    this.openMenu.set(null);
+    this.status.set(
+      kind === 'bullet' ? 'Viñetas actualizadas' : 'Numeración actualizada',
+    );
+  }
+
+  private adjustIndent(delta: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.paragraphToolsEnabled()) return;
+    const next = clamp(
+      (selected.style?.padding ?? 0) + delta,
+      0,
+      MAX_INDENT_MM,
+    );
+    this.store.updateStyle(selected.id, { padding: next });
+    this.status.set('Sangría actualizada');
   }
 
   tableRows(element: DesignComponent): number {
@@ -180,12 +348,16 @@ export class EditorPage {
     const columns = this.tableColumns(element);
     const content = element.content ?? {};
 
-    if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
+    if (
+      this.tableMode(element) === 'fixedRows' &&
+      Array.isArray(content.rows)
+    ) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
-          if (column.value) return column.value;
-          if (index === 0) return row.label ?? '';
-          return row.value ?? row.dataPath ?? '';
+          if (column.value) return withSampleData(column.value);
+          if (index === 0) return withSampleData(row.label);
+          if (row.value) return withSampleData(row.value);
+          return row.dataPath ? withSampleData(`{{${row.dataPath}}}`) : '';
         }),
       );
     }
@@ -195,11 +367,15 @@ export class EditorPage {
       return [
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
-          return field?.value ?? field?.dataPath ?? '—';
+          if (field?.value) return withSampleData(field.value);
+          return field?.dataPath
+            ? withSampleData(`{{${field.dataPath}}}`)
+            : '—';
         }),
       ];
     }
 
+    const rowAlias = content.rowAlias;
     const collectionPath = content.collectionPath ?? content.dataPath;
     const records = collectionPath
       ? this.bindings.collection(collectionPath)
@@ -220,15 +396,11 @@ export class EditorPage {
 
     return Array.from({ length: this.tableRows(element) }, (_, rowIndex) =>
       columns.map((column) =>
-        rowIndex === 0 ? column.value || column.dataPath || '—' : '',
+        column.value
+          ? column.value
+          : sampleCell(rowAlias, column.dataPath, rowIndex),
       ),
     );
-  }
-
-  createNew(): void {
-    this.store.createNew();
-    this.bindings.configure(this.store.template());
-    this.status.set('Nuevo contrato 3.0');
   }
 
   previewText(element: DesignComponent): string {
@@ -259,13 +431,17 @@ export class EditorPage {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const error = this.store.importContract(JSON.parse(String(reader.result)));
+        const error = this.store.importContract(
+          JSON.parse(String(reader.result)),
+        );
         if (error) {
           this.status.set(error);
           return;
         }
         this.bindings.configure(this.store.template());
-        this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
+        this.status.set(
+          `Contrato ${this.store.template().schemaVersion} importado`,
+        );
       } catch (error) {
         this.status.set(`JSON inválido: ${(error as Error).message}`);
       } finally {
@@ -383,16 +559,28 @@ export class EditorPage {
     }
   }
 
+  startContainerPresetDrag(event: DragEvent, kind: ContainerPresetKind): void {
+    event.dataTransfer?.setData('application/x-container-preset-kind', kind);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'copy';
+    }
+  }
+
+  addContainerPreset(kind: ContainerPresetKind): void {
+    const container = createContainerPreset(kind);
+    this.store.addPrefab(container);
+    this.status.set(`Contenedor "${container.name}" agregado`);
+  }
+
   allowDrop(event: DragEvent): void {
-    if (event.dataTransfer?.types.includes('application/x-component-type')) {
+    if (this.hasPaletteData(event)) {
       event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
+      event.dataTransfer!.dropEffect = 'copy';
     }
   }
 
   dropOnPage(event: DragEvent): void {
-    const type = event.dataTransfer?.getData('application/x-component-type');
-    if (!type) return;
+    if (!this.hasPaletteData(event)) return;
 
     event.preventDefault();
     const page = event.currentTarget as HTMLElement;
@@ -401,27 +589,41 @@ export class EditorPage {
       rect.width / (this.store.template().page.widthMm * CSS_MM_IN_PX);
     const scaleY =
       rect.height / (this.store.template().page.heightMm * CSS_MM_IN_PX);
-
-    this.store.addElement(type as ComponentType, {
+    const dropPoint = {
       x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
       y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
-    });
+    };
+
+    const presetKind = event.dataTransfer?.getData(
+      'application/x-container-preset-kind',
+    );
+    if (presetKind) {
+      const container = createContainerPreset(
+        presetKind as ContainerPresetKind,
+      );
+      this.store.addPrefab(container, dropPoint);
+      this.status.set(`Contenedor "${container.name}" agregado`);
+      return;
+    }
+
+    const type = event.dataTransfer?.getData('application/x-component-type');
+    if (!type) return;
+    this.store.addElement(type as ComponentType, dropPoint);
     this.status.set('Cambios sin guardar');
   }
 
   allowContainerDrop(event: DragEvent): void {
-    if (!event.dataTransfer?.types.includes('application/x-component-type')) {
+    if (!this.hasPaletteData(event)) {
       return;
     }
 
     event.preventDefault();
     event.stopPropagation();
-    event.dataTransfer.dropEffect = 'copy';
+    event.dataTransfer!.dropEffect = 'copy';
   }
 
   dropOnContainer(event: DragEvent, container: DesignComponent): void {
-    const type = event.dataTransfer?.getData('application/x-component-type');
-    if (!type) return;
+    if (!this.hasPaletteData(event)) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -429,17 +631,36 @@ export class EditorPage {
     const rect = target.getBoundingClientRect();
     const scaleX = rect.width / (container.position.width * CSS_MM_IN_PX);
     const scaleY = rect.height / (container.position.height * CSS_MM_IN_PX);
+    const dropPoint = {
+      x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
+      y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
+    };
 
-    this.store.addElement(
-      type as ComponentType,
-      {
-        x: (event.clientX - rect.left) / (CSS_MM_IN_PX * scaleX),
-        y: (event.clientY - rect.top) / (CSS_MM_IN_PX * scaleY),
-      },
-      container.id,
+    const presetKind = event.dataTransfer?.getData(
+      'application/x-container-preset-kind',
     );
+    if (presetKind) {
+      const preset = createContainerPreset(presetKind as ContainerPresetKind);
+      this.store.addPrefab(preset, dropPoint, container.id);
+      this.status.set(
+        `Contenedor agregado dentro de ${container.name ?? 'contenedor'}`,
+      );
+      return;
+    }
+
+    const type = event.dataTransfer?.getData('application/x-component-type');
+    if (!type) return;
+    this.store.addElement(type as ComponentType, dropPoint, container.id);
     this.status.set(
       `Componente agregado dentro de ${container.name ?? 'contenedor'}`,
+    );
+  }
+
+  private hasPaletteData(event: DragEvent): boolean {
+    const types = event.dataTransfer?.types;
+    return Boolean(
+      types?.includes('application/x-component-type') ||
+      types?.includes('application/x-container-preset-kind'),
     );
   }
 
@@ -478,23 +699,9 @@ export class EditorPage {
       (event.clientY - this.interaction.startClientY) / CSS_MM_IN_PX;
 
     if (this.interaction.mode === 'move') {
-      const selected = this.store.selectedElement();
-      if (!selected) return;
-      const bounds = this.store.getElementBounds(selected.id);
-      const maxX = bounds.width - selected.position.width;
-      const maxY = bounds.height - selected.position.height;
-      this.store.updatePosition(this.interaction.id, {
-        x: clamp(this.interaction.initialX + deltaX, 0, maxX),
-        y: clamp(this.interaction.initialY + deltaY, 0, maxY),
-      });
+      this.applyMove(deltaX, deltaY);
     } else {
-      const bounds = this.store.getElementBounds(this.interaction.id);
-      const maxWidth = bounds.width - this.interaction.initialX;
-      const maxHeight = bounds.height - this.interaction.initialY;
-      this.store.updatePosition(this.interaction.id, {
-        width: clamp(this.interaction.initialWidth + deltaX, 5, maxWidth),
-        height: clamp(this.interaction.initialHeight + deltaY, 5, maxHeight),
-      });
+      this.applyResize(deltaX, deltaY);
     }
 
     this.status.set('Cambios sin guardar');
@@ -503,12 +710,153 @@ export class EditorPage {
   @HostListener('document:pointerup')
   endInteraction(): void {
     this.interaction = null;
+    this.alignmentGuides.set([]);
   }
 
-  updateNumber(
-    property: 'x' | 'y' | 'width' | 'height',
-    event: Event,
-  ): void {
+  /** Mueve el elemento con imán hacia bordes/centros y sin superponerse. */
+  private applyMove(deltaX: number, deltaY: number): void {
+    const interaction = this.interaction!;
+    const element = this.store.selectedElement();
+    if (!element) return;
+
+    const bounds = this.store.getElementBounds(interaction.id);
+    const width = interaction.initialWidth;
+    const height = interaction.initialHeight;
+    const maxX = Math.max(0, bounds.width - width);
+    const maxY = Math.max(0, bounds.height - height);
+    let x = clamp(interaction.initialX + deltaX, 0, maxX);
+    let y = clamp(interaction.initialY + deltaY, 0, maxY);
+
+    const siblings = this.store.getSiblings(interaction.id);
+
+    // Anclas de destino: bordes y centros de hermanos, más los del lienzo.
+    const verticalTargets = [0, bounds.width / 2, bounds.width];
+    const horizontalTargets = [0, bounds.height / 2, bounds.height];
+    for (const sibling of siblings) {
+      const p = sibling.position;
+      verticalTargets.push(p.x, p.x + p.width / 2, p.x + p.width);
+      horizontalTargets.push(p.y, p.y + p.height / 2, p.y + p.height);
+    }
+
+    const ownVertical = [0, width / 2, width];
+    const ownHorizontal = [0, height / 2, height];
+
+    let snapV: { shift: number; line: number } | null = null;
+    for (const target of verticalTargets) {
+      for (const own of ownVertical) {
+        const shift = target - (x + own);
+        if (
+          Math.abs(shift) <= SNAP_MM &&
+          (!snapV || Math.abs(shift) < Math.abs(snapV.shift))
+        ) {
+          snapV = { shift, line: target };
+        }
+      }
+    }
+
+    let snapH: { shift: number; line: number } | null = null;
+    for (const target of horizontalTargets) {
+      for (const own of ownHorizontal) {
+        const shift = target - (y + own);
+        if (
+          Math.abs(shift) <= SNAP_MM &&
+          (!snapH || Math.abs(shift) < Math.abs(snapH.shift))
+        ) {
+          snapH = { shift, line: target };
+        }
+      }
+    }
+
+    if (snapV) x = clamp(x + snapV.shift, 0, maxX);
+    if (snapH) y = clamp(y + snapH.shift, 0, maxY);
+
+    // Sin superposición: si choca, desliza por un solo eje o se detiene.
+    const collidesAt = (px: number, py: number) =>
+      siblings.some((sibling) =>
+        rectsOverlap(px, py, width, height, sibling.position),
+      );
+    if (collidesAt(x, y)) {
+      if (!collidesAt(x, element.position.y)) {
+        y = element.position.y;
+        snapH = null;
+      } else if (!collidesAt(element.position.x, y)) {
+        x = element.position.x;
+        snapV = null;
+      } else {
+        x = element.position.x;
+        y = element.position.y;
+        snapV = null;
+        snapH = null;
+      }
+    }
+
+    // Solo dibuja la guía si tras resolver colisiones sigue alineado.
+    const offset = this.store.getParentOffset(interaction.id);
+    const guides: AlignmentGuide[] = [];
+    if (
+      snapV &&
+      ownVertical.some((own) => Math.abs(x + own - snapV!.line) < 0.05)
+    ) {
+      guides.push({
+        orientation: 'vertical',
+        positionMm: offset.x + snapV.line,
+      });
+    }
+    if (
+      snapH &&
+      ownHorizontal.some((own) => Math.abs(y + own - snapH!.line) < 0.05)
+    ) {
+      guides.push({
+        orientation: 'horizontal',
+        positionMm: offset.y + snapH.line,
+      });
+    }
+    this.alignmentGuides.set(guides);
+
+    this.store.updatePosition(interaction.id, { x, y });
+  }
+
+  /** Redimensiona sin invadir a los hermanos. */
+  private applyResize(deltaX: number, deltaY: number): void {
+    const interaction = this.interaction!;
+    const element = this.store.selectedElement();
+    if (!element) return;
+
+    const bounds = this.store.getElementBounds(interaction.id);
+    const maxWidth = bounds.width - interaction.initialX;
+    const maxHeight = bounds.height - interaction.initialY;
+    let width = clamp(
+      interaction.initialWidth + deltaX,
+      5,
+      Math.max(5, maxWidth),
+    );
+    let height = clamp(
+      interaction.initialHeight + deltaY,
+      5,
+      Math.max(5, maxHeight),
+    );
+
+    const siblings = this.store.getSiblings(interaction.id);
+    const x = interaction.initialX;
+    const y = interaction.initialY;
+    const collidesAt = (w: number, h: number) =>
+      siblings.some((sibling) => rectsOverlap(x, y, w, h, sibling.position));
+
+    if (collidesAt(width, height)) {
+      if (!collidesAt(width, element.position.height)) {
+        height = element.position.height;
+      } else if (!collidesAt(element.position.width, height)) {
+        width = element.position.width;
+      } else {
+        width = element.position.width;
+        height = element.position.height;
+      }
+    }
+
+    this.store.updatePosition(interaction.id, { width, height });
+  }
+
+  updateNumber(property: 'x' | 'y' | 'width' | 'height', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
     this.store.updatePosition(selected.id, {
@@ -533,6 +881,50 @@ export class EditorPage {
       url: (event.target as HTMLInputElement).value,
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  fixedRows(element: DesignComponent): FixedTableRow[] {
+    const rows = element.content?.rows;
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  updateFixedRow(
+    index: number,
+    property: 'label' | 'dataPath',
+    event: Event,
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const value = (event.target as HTMLInputElement).value;
+    this.store.updateContent(selected.id, {
+      rows: this.fixedRows(selected).map((row, rowIndex) =>
+        rowIndex === index ? { ...row, [property]: value } : row,
+      ),
+    });
+    this.status.set('Cambios sin guardar');
+  }
+
+  addFixedRow(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateContent(selected.id, {
+      rows: [...this.fixedRows(selected), { label: 'CONCEPTO', dataPath: '' }],
+    });
+    this.status.set('Fila agregada');
+  }
+
+  removeFixedRow(index: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateContent(selected.id, {
+      rows: this.fixedRows(selected).filter(
+        (_, rowIndex) => rowIndex !== index,
+      ),
+    });
+    this.status.set('Fila eliminada');
   }
 
   addColumn(): void {
@@ -654,14 +1046,82 @@ export class EditorPage {
       },
       error: () => {
         this.status.set('Error al subir la imagen');
-      }
+      },
     });
   }
 
   save(): void {
-    this.store.save().subscribe(() => {
-      this.status.set('Formato guardado en el servidor');
+    this.store.versionSaveInfo().subscribe({
+      next: async ({ exists, latestVersion, nextVersion }) => {
+        if (exists) {
+          const confirmed = await confirmAction({
+            title: 'Se creará una nueva versión',
+            text:
+              `La última versión de este formato es la ${latestVersion}. ` +
+              `Los cambios se guardarán como versión ${nextVersion} ` +
+              'y la versión actual se conservará sin cambios.',
+            confirmText: `Crear versión ${nextVersion}`,
+          });
+          if (!confirmed) return;
+
+          this.store.saveAsNewVersion(nextVersion).subscribe({
+            next: (versionedTemplate) => {
+              this.status.set(`Nueva versión ${nextVersion} guardada`);
+              notifySuccess(
+                `Versión ${nextVersion} creada`,
+                versionedTemplate.document.name || undefined,
+              );
+              void this.router.navigate(
+                ['/editor', versionedTemplate.document.id],
+                {
+                  replaceUrl: true,
+                },
+              );
+            },
+            error: () => {
+              this.status.set(
+                `No fue posible crear la versión ${nextVersion}. Intenta nuevamente.`,
+              );
+            },
+          });
+          return;
+        }
+
+        this.store.save().subscribe({
+          next: () => {
+            this.status.set('Formato guardado en el servidor');
+            notifySuccess(
+              'Formato guardado',
+              this.store.template().document.name || undefined,
+            );
+            const newId = this.store.template().document.id;
+            void this.router.navigate(['/editor', newId], { replaceUrl: true });
+          },
+          error: () => {
+            this.status.set('No fue posible guardar el formato.');
+          },
+        });
+      },
+      error: () => {
+        this.status.set(
+          'No fue posible consultar las versiones existentes del formato.',
+        );
+      },
     });
+  }
+
+  async createNew(): Promise<void> {
+    const confirmed = await confirmAction({
+      title: '¿Crear un formato nuevo?',
+      text: 'Los cambios que no hayas guardado se perderán.',
+      confirmText: 'Sí, crear nuevo',
+    });
+    if (!confirmed) return;
+
+    this.store.createNew();
+    this.bindings.configure(this.store.template());
+    this.status.set('Borrador sin guardar');
+    notifySuccess('Formato nuevo listo');
   }
 
   exportJson(): void {
@@ -683,14 +1143,70 @@ export class EditorPage {
     link.click();
     URL.revokeObjectURL(url);
     this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
+    notifySuccess(
+      'JSON exportado',
+      `${template.document.name || 'plantilla'}.json`,
+    );
   }
 
-  remove(): void {
+  async remove(): Promise<void> {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const confirmed = await confirmAction({
+      title: '¿Eliminar componente?',
+      text: `Se eliminará «${selected.name}» de la hoja.`,
+      confirmText: 'Sí, eliminar',
+    });
+    if (!confirmed) return;
+
     this.store.removeSelected();
     this.status.set('Componente eliminado');
+    notifySuccess('Componente eliminado');
   }
 }
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function stripListPrefix(line: string): string {
+  for (const prefix of BULLET_PREFIXES) {
+    if (line.startsWith(prefix)) {
+      return line.slice(prefix.length);
+    }
+  }
+  return line.replace(NUMBER_PREFIX_RE, '');
+}
+
+function formatListMarker(marker: string, index: number): string {
+  if (marker === '1.' || marker.startsWith('1')) {
+    return `${index + 1}.`;
+  }
+  if (marker === 'a.' || marker.startsWith('a')) {
+    return `${String.fromCharCode(97 + (index % 26))}.`;
+  }
+  if (marker === 'i.' || marker.startsWith('i')) {
+    return `${toRoman(index + 1)}.`;
+  }
+  return marker.replace(/\.$/, '') + '.';
+}
+
+function toRoman(value: number): string {
+  const numerals: [number, string][] = [
+    [10, 'x'],
+    [9, 'ix'],
+    [5, 'v'],
+    [4, 'iv'],
+    [1, 'i'],
+  ];
+  let remaining = value;
+  let result = '';
+  for (const [amount, symbol] of numerals) {
+    while (remaining >= amount) {
+      result += symbol;
+      remaining -= amount;
+    }
+  }
+  return result || 'i';
 }
