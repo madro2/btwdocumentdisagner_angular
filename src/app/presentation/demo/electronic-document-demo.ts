@@ -166,18 +166,14 @@ export class ElectronicDocumentDemo implements OnInit, OnDestroy {
   }
 
   private async fetchXmlFromSource(cufe: string): Promise<string> {
-    const source = await firstValueFrom(
-      this.http.get<SourceUrlResponse>(
-        `${environment.apiBaseUrl}/electronic-documents/${encodeURIComponent(cufe)}/source-url`,
-      ),
-    );
-    const response = await fetch(source.url, {
+    const proxyUrl = `${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodeURIComponent(cufe)}/XMLERP/WithPath`;
+    const response = await fetch(proxyUrl, {
       headers: {
         Accept: 'application/json, application/xml, text/plain',
       },
     });
     if (!response.ok) {
-      throw new Error(`FilesFE respondió HTTP ${response.status}.`);
+      throw new Error(`Proxy respondió HTTP ${response.status}.`);
     }
     return this.decodeXmlPayload(await response.text());
   }

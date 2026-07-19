@@ -2,6 +2,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { Component, computed, HostListener, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 import { EditorStore, rectsOverlap } from '../../application/editor/editor.store';
 import { BindingEvaluatorService } from '../../application/bindings/binding-evaluator.service';
 import {
@@ -46,6 +48,12 @@ const TYPE_ICONS: Record<ComponentType, string> = {
 
 type InteractionMode = 'move' | 'resize';
 type ListKind = 'bullet' | 'number';
+type PaletteTab = 'components' | 'dataSources';
+
+interface DataSourceFieldGroup {
+  name: string;
+  fields: DataSourceField[];
+}
 
 interface Interaction {
   id: string;
@@ -89,6 +97,7 @@ export class EditorPage {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly dataSourceCatalog = inject(DataSourceCatalogService);
+  private readonly http = inject(HttpClient);
   private interaction: Interaction | null = null;
 
   readonly containerPresets = CONTAINER_PRESETS;
@@ -100,8 +109,11 @@ export class EditorPage {
   readonly alignmentGuides = signal<AlignmentGuide[]>([]);
   readonly openMenu = signal<'spacing' | null>(null);
   readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+  readonly activePaletteTab = signal<PaletteTab>('components');
   readonly dataSourceCollections = signal<DataSourceCollection[]>([]);
   readonly dataSourceQuery = signal('');
+  readonly dataSourceLoading = signal(false);
+  readonly dataSourceError = signal<string | null>(null);
   readonly filteredDataSourceCollections = computed(() => {
     const query = this.dataSourceQuery().trim().toLowerCase();
     if (!query) return this.dataSourceCollections();
@@ -118,11 +130,10 @@ export class EditorPage {
   });
 
   constructor() {
-    this.dataSourceCatalog.list().subscribe({
-      next: (collections) => this.dataSourceCollections.set(collections),
-      error: () => this.dataSourceCollections.set([]),
-    });
+    this.loadDataSourceCatalog();
     const id = this.route.snapshot.paramMap.get('id');
+    const xmlId = this.route.snapshot.queryParamMap.get('xmlId');
+
     if (!id) {
       const preset = this.route.snapshot.queryParamMap.get('preset');
       if (preset === 'standard-invoice') {
@@ -138,6 +149,7 @@ export class EditorPage {
               }
 
               this.bindings.configure(this.store.template());
+              this.loadXmlFromErp(xmlId);
               this.status.set(
                 `Plantilla ${NATIONAL_INVOICE_TEMPLATE.name} v${NATIONAL_INVOICE_TEMPLATE.version} cargada`,
               );
@@ -160,17 +172,76 @@ export class EditorPage {
         this.store.setOrientation('landscape');
       }
       this.bindings.configure(this.store.template());
-      return;
+      this.loadXmlFromErp(xmlId);
+    } else {
+      this.store.loadById(id).subscribe((loaded) => {
+        if (loaded) {
+          this.status.set('Formato cargado');
+          this.bindings.configure(this.store.template());
+          this.loadXmlFromErp(xmlId);
+        } else {
+          this.router.navigate(['/']);
+        }
+      });
     }
+  }
 
-    this.store.loadById(id).subscribe((loaded) => {
-      if (loaded) {
-        this.status.set('Formato cargado');
-        this.bindings.configure(this.store.template());
-      } else {
-        this.router.navigate(['/']);
-      }
+  setPaletteTab(tab: PaletteTab): void {
+    this.activePaletteTab.set(tab);
+  }
+
+  loadDataSourceCatalog(): void {
+    this.dataSourceLoading.set(true);
+    this.dataSourceError.set(null);
+    this.dataSourceCatalog.list().subscribe({
+      next: (collections) => {
+        this.dataSourceCollections.set(collections);
+        this.dataSourceLoading.set(false);
+      },
+      error: () => {
+        this.dataSourceCollections.set([]);
+        this.dataSourceLoading.set(false);
+        this.dataSourceError.set(
+          'No fue posible cargar las fuentes de datos. Verifica la conexión con el backend.',
+        );
+      },
     });
+  }
+
+  dataSourceGroups(collection: DataSourceCollection): DataSourceFieldGroup[] {
+    const groups = new Map<string, DataSourceField[]>();
+    for (const field of collection.fields) {
+      const groupName = field.group?.trim() || 'Otros campos';
+      const fields = groups.get(groupName) ?? [];
+      fields.push(field);
+      groups.set(groupName, fields);
+    }
+    return Array.from(groups, ([name, fields]) => ({ name, fields }));
+  }
+
+  private loadXmlFromErp(xmlId: string | null): void {
+    if (!xmlId) return;
+
+    const encodedXmlId = encodeURIComponent(xmlId);
+    this.http
+      .get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodedXmlId}/XMLERP/WithPath`, {
+        responseType: 'text',
+      })
+      .subscribe({
+        next: (xml) => {
+          const error = this.bindings.loadXml(xml);
+          if (error) {
+            this.status.set(`Error cargando XML: ${error}`);
+          } else {
+            this.status.set(
+              `XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`,
+            );
+          }
+        },
+        error: () => {
+          this.status.set('Error descargando XML desde el ERP');
+        },
+      });
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
@@ -367,10 +438,16 @@ export class EditorPage {
     if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
-          if (column.value) return withSampleData(column.value);
-          if (index === 0) return withSampleData(row.label);
-          if (row.value) return withSampleData(row.value);
-          return row.dataPath ? withSampleData(`{{${row.dataPath}}}`) : '';
+          if (column.value) {
+            return this.previewBindingValue(column.value, column.defaultValue ?? '');
+          }
+          if (index === 0) return this.previewBindingValue(row.label);
+          if (row.value) {
+            return this.previewBindingValue(row.value, row.defaultValue ?? '');
+          }
+          return row.dataPath
+            ? this.previewBindingValue(`{{${row.dataPath}}}`, row.defaultValue ?? '')
+            : (row.defaultValue ?? '');
         }),
       );
     }
@@ -380,8 +457,12 @@ export class EditorPage {
       return [
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
-          if (field?.value) return withSampleData(field.value);
-          return field?.dataPath ? withSampleData(`{{${field.dataPath}}}`) : '—';
+          if (field?.value) {
+            return this.previewBindingValue(field.value, field.defaultValue ?? '');
+          }
+          return field?.dataPath
+            ? this.previewBindingValue(`{{${field.dataPath}}}`, field.defaultValue ?? '')
+            : '—';
         }),
       ];
     }
@@ -417,6 +498,16 @@ export class EditorPage {
       element.content?.bindings,
       String(element.content?.defaultValue ?? ''),
     );
+  }
+
+  /**
+   * Usa el XML real cuando el usuario ya lo cargó. Los valores de ejemplo se
+   * conservan únicamente para que una plantilla nueva no aparezca vacía.
+   */
+  private previewBindingValue(template: string | undefined, defaultValue = ''): string {
+    const resolved = this.bindings.render(template, {}, {}, defaultValue);
+    if (resolved || this.bindings.hasLoadedXml()) return resolved;
+    return withSampleData(template) || defaultValue;
   }
 
   previewImageSource(element: DesignComponent): string | null {
@@ -562,15 +653,22 @@ export class EditorPage {
     }
   }
 
-  startDataSourceFieldDrag(event: DragEvent, field: DataSourceField): void {
-    event.dataTransfer?.setData('application/x-data-source-field', JSON.stringify(field));
+  startDataSourceFieldDrag(
+    event: DragEvent,
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): void {
+    event.dataTransfer?.setData(
+      'application/x-data-source-field',
+      JSON.stringify(this.withCollection(field, collection)),
+    );
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
     }
   }
 
-  addDataSourceField(field: DataSourceField): void {
-    this.store.addDataSourceField(field);
+  addDataSourceField(field: DataSourceField, collection: DataSourceCollection): void {
+    this.store.addDataSourceField(this.withCollection(field, collection));
     this.status.set(`Campo "${field.displayName}" enlazado a ${field.path}`);
   }
 
@@ -672,6 +770,30 @@ export class EditorPage {
     this.status.set(`Componente agregado dentro de ${container.name ?? 'contenedor'}`);
   }
 
+  allowDataSourceBindingDrop(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes('application/x-data-source-field')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  dropDataSourceOnElement(event: DragEvent, element: DesignComponent): void {
+    const field = this.readDataSourceField(event);
+    if (!field) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.store.bindDataSourceField(element.id, field)) {
+      this.status.set(`Componente "${element.name ?? element.type}" enlazado a ${field.path}`);
+      return;
+    }
+
+    this.status.set(`El componente ${element.type} no admite un campo escalar.`);
+  }
+
   private hasPaletteData(event: DragEvent): boolean {
     const types = event.dataTransfer?.types;
     return Boolean(
@@ -689,6 +811,17 @@ export class EditorPage {
     } catch {
       return null;
     }
+  }
+
+  private withCollection(
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): DataSourceField {
+    return {
+      ...field,
+      collectionId: collection.id,
+      collectionName: collection.name,
+    };
   }
 
   select(event: PointerEvent, element: DesignComponent): void {
