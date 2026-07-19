@@ -150,6 +150,22 @@ select {
   background: rgb(255 255 255 / 12%);
 }
 
+.button.icon-button {
+  min-width: 34px;
+  padding: 7px 9px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.toolbar .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.toolbar .button.ghost:disabled:hover {
+  background: transparent;
+}
+
 .toolbar .button.primary {
   color: var(--brand-700);
   font-weight: 700;
@@ -955,6 +971,90 @@ select {
   border-radius: 999px;
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(6px);
+}
+
+/* ─── Barra de páginas ─── */
+
+.pages-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 14px;
+}
+
+.page-tab {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  background: rgb(255 255 255 / 88%);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.page-tab.active {
+  border-color: var(--brand-700);
+  box-shadow: 0 1px 6px rgb(92 0 22 / 25%);
+}
+
+.page-tab-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 12px;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+}
+
+.page-tab-label strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.page-tab.active .page-tab-label strong {
+  color: var(--brand-700);
+}
+
+.page-tab-label small {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.page-tab-remove {
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+}
+
+.page-tab-remove:hover {
+  color: #b91c1c;
+  background: rgb(185 28 28 / 8%);
+}
+
+.page-add {
+  padding: 8px 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: rgb(255 255 255 / 70%);
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+}
+
+.page-add:hover {
+  color: var(--brand-700);
+  border-color: var(--brand-700);
 }
 
 .page {

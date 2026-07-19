@@ -190,6 +190,32 @@ export class EditorPage {
     this.activePaletteTab.set(tab);
   }
 
+  addPage(): void {
+    this.store.addPage();
+    this.status.set(`Página ${this.store.pageCount()} agregada`);
+    notifySuccess(`Página ${this.store.pageCount()} agregada`);
+  }
+
+  selectPage(index: number): void {
+    this.store.setActivePage(index);
+    this.status.set(`Editando la página ${index + 1}`);
+  }
+
+  async removePage(index: number, event: Event): Promise<void> {
+    event.stopPropagation();
+
+    const confirmed = await confirmAction({
+      title: '¿Eliminar página?',
+      text: `La página ${index + 1} y todos sus componentes se eliminarán.`,
+      confirmText: 'Sí, eliminar',
+    });
+    if (!confirmed) return;
+
+    this.store.removePage(index);
+    this.status.set('Página eliminada');
+    notifySuccess('Página eliminada');
+  }
+
   loadDataSourceCatalog(): void {
     this.dataSourceLoading.set(true);
     this.dataSourceError.set(null);
@@ -307,6 +333,110 @@ export class EditorPage {
   closeFloatingUi(): void {
     this.tablePickerOpen.set(false);
     this.openMenu.set(null);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent): void {
+    if (isEditableTarget(event.target)) return;
+
+    const ctrl = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+
+    if (ctrl && key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      this.undo();
+      return;
+    }
+    if ((ctrl && key === 'y') || (ctrl && event.shiftKey && key === 'z')) {
+      event.preventDefault();
+      this.redo();
+      return;
+    }
+    if (ctrl && key === 'c') {
+      if (this.copySelected()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'x') {
+      if (this.cutSelected()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'v') {
+      if (this.pasteClipboard()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'd') {
+      event.preventDefault();
+      this.duplicateSelected();
+      return;
+    }
+    if (key === 'delete' || key === 'backspace') {
+      if (this.deleteSelectedDirect()) event.preventDefault();
+      return;
+    }
+    if (key === 'escape') {
+      this.store.select(null);
+      return;
+    }
+    if (key.startsWith('arrow')) {
+      if (this.nudgeSelected(key, event.shiftKey)) event.preventDefault();
+    }
+  }
+
+  undo(): void {
+    if (!this.store.undo()) return;
+    this.status.set('Acción deshecha');
+  }
+
+  redo(): void {
+    if (!this.store.redo()) return;
+    this.status.set('Acción rehecha');
+  }
+
+  copySelected(): boolean {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.store.copySelected()) return false;
+    this.status.set(`«${selected.name ?? selected.type}» copiado`);
+    return true;
+  }
+
+  cutSelected(): boolean {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.store.cutSelected()) return false;
+    this.status.set(`«${selected.name ?? selected.type}» cortado`);
+    return true;
+  }
+
+  pasteClipboard(): boolean {
+    const pasted = this.store.paste();
+    if (!pasted) return false;
+    this.status.set(`«${pasted.name ?? pasted.type}» pegado`);
+    return true;
+  }
+
+  duplicateSelected(): void {
+    const duplicated = this.store.duplicateSelected();
+    if (!duplicated) return;
+    this.status.set(`«${duplicated.name ?? duplicated.type}» duplicado`);
+  }
+
+  private deleteSelectedDirect(): boolean {
+    if (!this.store.selectedElement()) return false;
+    this.store.removeSelected();
+    this.status.set('Componente eliminado · Ctrl+Z para deshacer');
+    return true;
+  }
+
+  private nudgeSelected(arrowKey: string, big: boolean): boolean {
+    const step = big ? 5 : 1;
+    const delta: Record<string, [number, number]> = {
+      arrowup: [0, -step],
+      arrowdown: [0, step],
+      arrowleft: [-step, 0],
+      arrowright: [step, 0],
+    };
+    const [dx, dy] = delta[arrowKey] ?? [0, 0];
+    if (!dx && !dy) return false;
+    return this.store.moveSelectedBy(dx, dy);
   }
 
   paragraphToolsEnabled(): boolean {
@@ -1265,7 +1395,7 @@ export class EditorPage {
       return;
     }
 
-    const template = this.store.template();
+    const template = this.store.exportContract();
     const { updatedAt: _updatedAt, ...contract } = template;
     const blob = new Blob([JSON.stringify(contract, null, 2)], {
       type: 'application/json',
@@ -1299,6 +1429,14 @@ export class EditorPage {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Evita capturar atajos mientras se escribe en campos de texto. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
 function stripListPrefix(line: string): string {
