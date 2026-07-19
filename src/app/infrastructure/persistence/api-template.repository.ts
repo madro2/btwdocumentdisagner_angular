@@ -24,13 +24,24 @@ export class ApiTemplateRepository implements TemplateRepository {
 
   list(): Observable<DesignContract[]> {
     return this.http.get<PdfDesignTemplateDto[]>(this.apiUrl).pipe(
-      map(dtos => dtos.map(dto => JSON.parse(dto.jsonConfiguration) as DesignContract))
+      map(dtos => dtos
+        .map(dto => {
+          try {
+            return dto.jsonConfiguration ? (JSON.parse(dto.jsonConfiguration) as DesignContract) : null;
+          } catch { return null; }
+        })
+        .filter((contract): contract is DesignContract => contract !== null)
+      )
     );
   }
 
   load(id: string): Observable<DesignContract | null> {
     return this.http.get<PdfDesignTemplateDto>(`${this.apiUrl}/${id}`).pipe(
-      map(dto => dto ? (JSON.parse(dto.jsonConfiguration) as DesignContract) : null)
+      map(dto => {
+        try {
+          return dto && dto.jsonConfiguration ? (JSON.parse(dto.jsonConfiguration) as DesignContract) : null;
+        } catch { return null; }
+      })
     );
   }
 
