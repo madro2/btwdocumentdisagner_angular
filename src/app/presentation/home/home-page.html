@@ -133,17 +133,27 @@
               <small>{{ updatedLabel(template) }}</small>
             </div>
 
-            <span
-              class="card-remove"
-              role="button"
-              tabindex="0"
-              aria-label="Eliminar formato"
-              title="Eliminar formato"
-              (click)="remove($event, template)"
-              (keydown.enter)="remove($event, template)"
-            >
-              ✕
-            </span>
+            @if (template.document.version !== 1) {
+              <span
+                class="card-remove"
+                role="button"
+                tabindex="0"
+                aria-label="Eliminar formato"
+                title="Eliminar formato"
+                (click)="remove($event, template)"
+                (keydown.enter)="remove($event, template)"
+              >
+                ✕
+              </span>
+            } @else {
+              <span 
+                class="card-remove disabled" 
+                title="La versión 1 es la plantilla base y no se puede eliminar."
+                style="cursor: not-allowed; opacity: 0.5;"
+              >
+                🔒
+              </span>
+            }
           </button>
         }
       </div>
@@ -183,17 +193,27 @@
 
             <span class="file-date">{{ updatedLabel(template) }}</span>
 
-            <span
-              class="file-remove"
-              role="button"
-              tabindex="0"
-              aria-label="Eliminar formato"
-              title="Eliminar formato"
-              (click)="remove($event, template)"
-              (keydown.enter)="remove($event, template)"
-            >
-              ✕
-            </span>
+            @if (template.document.version !== 1) {
+              <span
+                class="file-remove"
+                role="button"
+                tabindex="0"
+                aria-label="Eliminar formato"
+                title="Eliminar formato"
+                (click)="remove($event, template)"
+                (keydown.enter)="remove($event, template)"
+              >
+                ✕
+              </span>
+            } @else {
+              <span 
+                class="file-remove disabled" 
+                title="La versión 1 es la plantilla base y no se puede eliminar."
+                style="cursor: not-allowed; opacity: 0.5;"
+              >
+                🔒
+              </span>
+            }
           </button>
         }
       </div>
