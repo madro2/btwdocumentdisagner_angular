@@ -1,4 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { createElement, TableSize } from '../../domain/factories/element.factory';
 import {
   ComponentContent,
@@ -291,31 +293,33 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
-  save(): void {
+  save(): Observable<void> {
     this.templateState.update((template) => ({
       ...template,
       updatedAt: new Date().toISOString(),
     }));
-    this.repository.save(this.templateState());
+    return this.repository.save(this.templateState());
   }
 
-  loadById(id: string): boolean {
-    const template = this.repository.load(id);
-    if (!template) return false;
-
-    this.templateState.set(template);
-    this.selectedIdState.set(null);
-    return true;
+  loadById(id: string): Observable<boolean> {
+    return this.repository.load(id).pipe(
+      map(template => {
+        if (!template) return false;
+        this.templateState.set(template);
+        this.selectedIdState.set(null);
+        return true;
+      })
+    );
   }
 
-  listTemplates(): DesignContract[] {
-    return this.repository
-      .list()
-      .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+  listTemplates(): Observable<DesignContract[]> {
+    return this.repository.list().pipe(
+      map(templates => templates.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')))
+    );
   }
 
-  removeTemplate(id: string): void {
-    this.repository.remove(id);
+  removeTemplate(id: string): Observable<void> {
+    return this.repository.remove(id);
   }
 
   private updateById(

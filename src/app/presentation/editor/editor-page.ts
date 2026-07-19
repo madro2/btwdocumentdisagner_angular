@@ -70,12 +70,18 @@ export class EditorPage {
     const id = this.route.snapshot.paramMap.get('id');
     if (!id) {
       this.store.createNew();
-    } else if (this.store.loadById(id)) {
-      this.status.set('Formato cargado');
-    } else {
-      this.router.navigate(['/']);
+      this.bindings.configure(this.store.template());
+      return;
     }
-    this.bindings.configure(this.store.template());
+
+    this.store.loadById(id).subscribe((loaded) => {
+      if (loaded) {
+        this.status.set('Formato cargado');
+        this.bindings.configure(this.store.template());
+      } else {
+        this.router.navigate(['/']);
+      }
+    });
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
@@ -643,8 +649,9 @@ export class EditorPage {
   }
 
   save(): void {
-    this.store.save();
-    this.status.set('Formato guardado localmente');
+    this.store.save().subscribe(() => {
+      this.status.set('Formato guardado en el servidor');
+    });
   }
 
   exportJson(): void {

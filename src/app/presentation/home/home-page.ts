@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { EditorStore } from '../../application/editor/editor.store';
 import {
@@ -12,12 +12,12 @@ import {
   templateUrl: './home-page.html',
   styleUrl: './home-page.css',
 })
-export class HomePage {
+export class HomePage implements OnInit {
   private readonly store = inject(EditorStore);
   private readonly router = inject(Router);
 
   readonly query = signal('');
-  readonly templates = signal<DesignContract[]>(this.store.listTemplates());
+  readonly templates = signal<DesignContract[]>([]);
   readonly filtered = computed(() => {
     const query = this.query().trim().toLowerCase();
     if (!query) return this.templates();
@@ -25,6 +25,14 @@ export class HomePage {
       template.document.name.toLowerCase().includes(query),
     );
   });
+
+  ngOnInit(): void {
+    this.loadTemplates();
+  }
+
+  private loadTemplates(): void {
+    this.store.listTemplates().subscribe(t => this.templates.set(t));
+  }
 
   search(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
@@ -40,8 +48,9 @@ export class HomePage {
 
   remove(event: Event, template: DesignContract): void {
     event.stopPropagation();
-    this.store.removeTemplate(template.document.id);
-    this.templates.set(this.store.listTemplates());
+    this.store.removeTemplate(template.document.id).subscribe(() => {
+      this.loadTemplates();
+    });
   }
 
   formatLabel(template: DesignContract): string {
