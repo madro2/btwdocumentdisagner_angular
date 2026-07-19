@@ -2,8 +2,11 @@ import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
-import { map } from 'rxjs/operators';
-import { createElement, TableSize } from '../../domain/factories/element.factory';
+import { map, tap } from 'rxjs/operators';
+import {
+  createElement,
+  TableSize,
+} from '../../domain/factories/element.factory';
 import {
   ComponentContent,
   ComponentStyle,
@@ -20,6 +23,10 @@ import {
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
 import { ContractValidatorService } from '../validation/contract-validator.service';
+import {
+  calculateVersionSaveInfo,
+  VersionSaveInfo,
+} from './versioning';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStore {
@@ -67,6 +74,25 @@ export class EditorStore {
       updatedAt: new Date().toISOString(),
     });
     this.selectedIdState.set(null);
+  }
+
+  startFromSavedTemplate(
+    name: string,
+    version: number,
+  ): Observable<boolean> {
+    return this.repository.list().pipe(
+      map((templates) => {
+        const template = templates.find(
+          (candidate) =>
+            candidate.document.name === name &&
+            (candidate.document.version ?? 1) === version,
+        );
+        if (!template) return false;
+
+        this.startFromTemplate(template);
+        return true;
+      }),
+    );
   }
 
   importContract(raw: unknown): string | null {
@@ -250,7 +276,8 @@ export class EditorStore {
     const elements = this.templateState().components;
     const element = findElement(elements, id);
     if (!element) return false;
-    if (parentId && containsId(element.components ?? [], parentId)) return false;
+    if (parentId && containsId(element.components ?? [], parentId))
+      return false;
 
     const currentParentId = findParentId(elements, id);
     if (currentParentId === parentId) return true;
@@ -282,7 +309,7 @@ export class EditorStore {
     };
 
     const targetSiblings = (
-      parentId ? findElement(elements, parentId)?.components ?? [] : elements
+      parentId ? (findElement(elements, parentId)?.components ?? []) : elements
     ).filter((item) => item.id !== id);
     movedElement.position = findFreePosition(
       movedElement.position,
@@ -369,21 +396,55 @@ export class EditorStore {
     return this.repository.save(this.templateState());
   }
 
+  versionSaveInfo(): Observable<VersionSaveInfo> {
+    const current = this.templateState();
+    return this.repository.list().pipe(
+      map((templates) => calculateVersionSaveInfo(current, templates)),
+    );
+  }
+
+  saveAsNewVersion(version: number): Observable<DesignContract> {
+    const now = new Date().toISOString();
+    const versionedTemplate: DesignContract = {
+      ...this.templateState(),
+      document: {
+        ...this.templateState().document,
+        id: crypto.randomUUID(),
+        version,
+      },
+      updatedAt: now,
+    };
+
+    return this.repository.save(versionedTemplate).pipe(
+      tap(() => {
+        this.templateState.set(versionedTemplate);
+        this.selectedIdState.set(null);
+      }),
+      map(() => versionedTemplate),
+    );
+  }
+
   loadById(id: string): Observable<boolean> {
     return this.repository.load(id).pipe(
-      map(template => {
+      map((template) => {
         if (!template) return false;
         this.templateState.set(template);
         this.selectedIdState.set(null);
         return true;
-      })
+      }),
     );
   }
 
   listTemplates(): Observable<DesignContract[]> {
-    return this.repository.list().pipe(
-      map(templates => templates.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '')))
-    );
+    return this.repository
+      .list()
+      .pipe(
+        map((templates) =>
+          templates.sort((a, b) =>
+            (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
+          ),
+        ),
+      );
   }
 
   removeTemplate(id: string): Observable<void> {
@@ -393,7 +454,10 @@ export class EditorStore {
   uploadImage(file: File): Observable<{ id: string }> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
+    return this.http.post<{ id: string }>(
+      `${environment.apiBaseUrl}/Images`,
+      formData,
+    );
   }
 
   private updateById(
@@ -550,11 +614,7 @@ function findAbsolutePosition(
       y: offset.y + element.position.y,
     };
     if (element.id === id) return position;
-    const nested = findAbsolutePosition(
-      element.components ?? [],
-      id,
-      position,
-    );
+    const nested = findAbsolutePosition(element.components ?? [], id, position);
     if (nested) return nested;
   }
   return null;
@@ -576,8 +636,7 @@ function collectIds(elements: DesignComponent[]): string[] {
 
 function containsId(elements: DesignComponent[], id: string): boolean {
   return elements.some(
-    (element) =>
-      element.id === id || containsId(element.components ?? [], id),
+    (element) => element.id === id || containsId(element.components ?? [], id),
   );
 }
 
