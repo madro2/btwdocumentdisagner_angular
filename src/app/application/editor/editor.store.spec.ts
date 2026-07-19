@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { DesignContract } from '../../domain/models/template.model';
+import { DesignComponent, DesignContract } from '../../domain/models/template.model';
+import { withDataSourceBinding } from './data-source-binding';
 import { calculateVersionSaveInfo } from './versioning';
 
 describe('calculateVersionSaveInfo', () => {
@@ -36,11 +37,56 @@ describe('calculateVersionSaveInfo', () => {
   });
 });
 
-function contract(
-  id: string,
-  name: string,
-  version: number,
-): DesignContract {
+describe('withDataSourceBinding', () => {
+  const field = {
+    id: 'field-id',
+    collectionId: 'collection-id',
+    collectionName: 'Factura',
+    name: 'LegalNumber',
+    displayName: 'Número legal',
+    description: 'Número legal de la factura',
+    path: 'InvcHead.LegalNumber',
+  };
+
+  it('converts a text component into a dynamic field and keeps trace metadata', () => {
+    const result = withDataSourceBinding(component('text'), field);
+
+    expect(result?.content).toMatchObject({
+      mode: 'dynamic',
+      value: '{{InvcHead.LegalNumber}}',
+      dataPath: 'InvcHead.LegalNumber',
+      defaultValue: 'Número legal',
+    });
+    expect(result?.properties).toMatchObject({
+      dataSourceFieldId: 'field-id',
+      dataSourceCollectionId: 'collection-id',
+      dataSourcePath: 'InvcHead.LegalNumber',
+    });
+  });
+
+  it('switches an image from asset to data source', () => {
+    const result = withDataSourceBinding(
+      {
+        ...component('image'),
+        content: { source: 'asset', assetId: 'asset-id', previewSrc: 'preview' },
+      },
+      field,
+    );
+
+    expect(result?.content).toMatchObject({
+      source: 'data',
+      dataPath: 'InvcHead.LegalNumber',
+    });
+    expect(result?.content?.assetId).toBeUndefined();
+    expect(result?.content?.previewSrc).toBeUndefined();
+  });
+
+  it('rejects components that do not support scalar bindings', () => {
+    expect(withDataSourceBinding(component('rectangle'), field)).toBeNull();
+  });
+});
+
+function contract(id: string, name: string, version: number): DesignContract {
   return {
     schemaVersion: '3.0',
     document: { id, name, version },
@@ -53,5 +99,15 @@ function contract(
       marginsMm: { top: 7, right: 7, bottom: 7, left: 7 },
     },
     components: [],
+  };
+}
+
+function component(type: DesignComponent['type']): DesignComponent {
+  return {
+    id: 'component-id',
+    type,
+    name: 'Componente',
+    position: { x: 0, y: 0, width: 20, height: 10, unit: 'mm' },
+    content: {},
   };
 }
