@@ -1,5 +1,7 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { Observable } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 import { map } from 'rxjs/operators';
 import { createElement, TableSize } from '../../domain/factories/element.factory';
 import {
@@ -23,6 +25,7 @@ import { ContractValidatorService } from '../validation/contract-validator.servi
 export class EditorStore {
   private readonly repository = inject(TEMPLATE_REPOSITORY);
   private readonly validator = inject(ContractValidatorService);
+  private readonly http = inject(HttpClient);
   private readonly templateState = signal<DesignContract>(this.emptyTemplate());
   private readonly selectedIdState = signal<string | null>(null);
 
@@ -320,6 +323,12 @@ export class EditorStore {
 
   removeTemplate(id: string): Observable<void> {
     return this.repository.remove(id);
+  }
+
+  uploadImage(file: File): Observable<{ id: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
   }
 
   private updateById(
