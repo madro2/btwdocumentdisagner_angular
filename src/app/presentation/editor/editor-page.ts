@@ -48,6 +48,12 @@ const TYPE_ICONS: Record<ComponentType, string> = {
 
 type InteractionMode = 'move' | 'resize';
 type ListKind = 'bullet' | 'number';
+type PaletteTab = 'components' | 'dataSources';
+
+interface DataSourceFieldGroup {
+  name: string;
+  fields: DataSourceField[];
+}
 
 interface Interaction {
   id: string;
@@ -103,8 +109,11 @@ export class EditorPage {
   readonly alignmentGuides = signal<AlignmentGuide[]>([]);
   readonly openMenu = signal<'spacing' | null>(null);
   readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+  readonly activePaletteTab = signal<PaletteTab>('components');
   readonly dataSourceCollections = signal<DataSourceCollection[]>([]);
   readonly dataSourceQuery = signal('');
+  readonly dataSourceLoading = signal(false);
+  readonly dataSourceError = signal<string | null>(null);
   readonly filteredDataSourceCollections = computed(() => {
     const query = this.dataSourceQuery().trim().toLowerCase();
     if (!query) return this.dataSourceCollections();
@@ -121,10 +130,7 @@ export class EditorPage {
   });
 
   constructor() {
-    this.dataSourceCatalog.list().subscribe({
-      next: (collections) => this.dataSourceCollections.set(collections),
-      error: () => this.dataSourceCollections.set([]),
-    });
+    this.loadDataSourceCatalog();
     const id = this.route.snapshot.paramMap.get('id');
     const xmlId = this.route.snapshot.queryParamMap.get('xmlId');
 
@@ -180,15 +186,47 @@ export class EditorPage {
     }
   }
 
+  setPaletteTab(tab: PaletteTab): void {
+    this.activePaletteTab.set(tab);
+  }
+
+  loadDataSourceCatalog(): void {
+    this.dataSourceLoading.set(true);
+    this.dataSourceError.set(null);
+    this.dataSourceCatalog.list().subscribe({
+      next: (collections) => {
+        this.dataSourceCollections.set(collections);
+        this.dataSourceLoading.set(false);
+      },
+      error: () => {
+        this.dataSourceCollections.set([]);
+        this.dataSourceLoading.set(false);
+        this.dataSourceError.set(
+          'No fue posible cargar las fuentes de datos. Verifica la conexión con el backend.',
+        );
+      },
+    });
+  }
+
+  dataSourceGroups(collection: DataSourceCollection): DataSourceFieldGroup[] {
+    const groups = new Map<string, DataSourceField[]>();
+    for (const field of collection.fields) {
+      const groupName = field.group?.trim() || 'Otros campos';
+      const fields = groups.get(groupName) ?? [];
+      fields.push(field);
+      groups.set(groupName, fields);
+    }
+    return Array.from(groups, ([name, fields]) => ({ name, fields }));
+  }
+
   private loadXmlFromErp(xmlId: string | null): void {
     if (!xmlId) return;
 
     const encodedXmlId = encodeURIComponent(xmlId);
     this.http
-      .get(
-        `${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodedXmlId}/XMLERP/WithPath`,
-        { responseType: 'text' },
-      )
+      .get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodedXmlId}/XMLERP/WithPath`, {
+        responseType: 'text',
+      })
       .subscribe({
         next: (xml) => {
           const error = this.bindings.loadXml(xml);
@@ -384,20 +422,14 @@ export class EditorPage {
       return content.rows.map((row) =>
         columns.map((column, index) => {
           if (column.value) {
-            return this.previewBindingValue(
-              column.value,
-              column.defaultValue ?? '',
-            );
+            return this.previewBindingValue(column.value, column.defaultValue ?? '');
           }
           if (index === 0) return this.previewBindingValue(row.label);
           if (row.value) {
             return this.previewBindingValue(row.value, row.defaultValue ?? '');
           }
           return row.dataPath
-            ? this.previewBindingValue(
-                `{{${row.dataPath}}}`,
-                row.defaultValue ?? '',
-              )
+            ? this.previewBindingValue(`{{${row.dataPath}}}`, row.defaultValue ?? '')
             : (row.defaultValue ?? '');
         }),
       );
@@ -409,16 +441,10 @@ export class EditorPage {
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
           if (field?.value) {
-            return this.previewBindingValue(
-              field.value,
-              field.defaultValue ?? '',
-            );
+            return this.previewBindingValue(field.value, field.defaultValue ?? '');
           }
           return field?.dataPath
-            ? this.previewBindingValue(
-                `{{${field.dataPath}}}`,
-                field.defaultValue ?? '',
-              )
+            ? this.previewBindingValue(`{{${field.dataPath}}}`, field.defaultValue ?? '')
             : '—';
         }),
       ];
@@ -610,15 +636,22 @@ export class EditorPage {
     }
   }
 
-  startDataSourceFieldDrag(event: DragEvent, field: DataSourceField): void {
-    event.dataTransfer?.setData('application/x-data-source-field', JSON.stringify(field));
+  startDataSourceFieldDrag(
+    event: DragEvent,
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): void {
+    event.dataTransfer?.setData(
+      'application/x-data-source-field',
+      JSON.stringify(this.withCollection(field, collection)),
+    );
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
     }
   }
 
-  addDataSourceField(field: DataSourceField): void {
-    this.store.addDataSourceField(field);
+  addDataSourceField(field: DataSourceField, collection: DataSourceCollection): void {
+    this.store.addDataSourceField(this.withCollection(field, collection));
     this.status.set(`Campo "${field.displayName}" enlazado a ${field.path}`);
   }
 
@@ -720,6 +753,30 @@ export class EditorPage {
     this.status.set(`Componente agregado dentro de ${container.name ?? 'contenedor'}`);
   }
 
+  allowDataSourceBindingDrop(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes('application/x-data-source-field')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  dropDataSourceOnElement(event: DragEvent, element: DesignComponent): void {
+    const field = this.readDataSourceField(event);
+    if (!field) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.store.bindDataSourceField(element.id, field)) {
+      this.status.set(`Componente "${element.name ?? element.type}" enlazado a ${field.path}`);
+      return;
+    }
+
+    this.status.set(`El componente ${element.type} no admite un campo escalar.`);
+  }
+
   private hasPaletteData(event: DragEvent): boolean {
     const types = event.dataTransfer?.types;
     return Boolean(
@@ -737,6 +794,17 @@ export class EditorPage {
     } catch {
       return null;
     }
+  }
+
+  private withCollection(
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): DataSourceField {
+    return {
+      ...field,
+      collectionId: collection.id,
+      collectionName: collection.name,
+    };
   }
 
   select(event: PointerEvent, element: DesignComponent): void {

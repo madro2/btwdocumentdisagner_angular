@@ -5,6 +5,8 @@ import { environment } from '../../../environments/environment';
 
 export interface DataSourceField {
   id: string;
+  collectionId?: string;
+  collectionName?: string;
   name: string;
   displayName: string;
   description: string;
