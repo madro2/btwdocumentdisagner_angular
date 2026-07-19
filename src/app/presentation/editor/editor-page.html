@@ -17,9 +17,21 @@
 
     <div class="toolbar-actions">
       <a class="button ghost" routerLink="/">Mis formatos</a>
-      <button class="button ghost" type="button" (click)="store.createNew()">
+      <button class="button ghost" type="button" (click)="createNew()">
         Nueva
       </button>
+      <label class="button ghost">
+        Importar JSON
+        <input hidden type="file" accept="application/json,.json" (change)="importJson($event)" />
+      </label>
+      <label class="button ghost">
+        Cargar XML
+        <input hidden type="file" accept="application/xml,text/xml,.xml" (change)="importXml($event)" />
+      </label>
+      <label class="button ghost">
+        Cargar runtime
+        <input hidden type="file" accept="application/json,.json" (change)="importRuntime($event)" />
+      </label>
       <button class="button ghost" type="button" (click)="exportJson()">
         Exportar JSON
       </button>
@@ -123,6 +135,19 @@
         <span class="item-icon text-icon">T</span>
         <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
       </button>
+
+      @for (type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak']; track type) {
+        <button
+          class="palette-item compact"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, $any(type))"
+          (click)="add($any(type))"
+        >
+          <span class="item-icon">{{ iconFor($any(type)) }}</span>
+          <span><strong>{{ type }}</strong><small>Contrato 3.0</small></span>
+        </button>
+      }
 
       <button
         class="palette-item"
@@ -244,7 +269,7 @@
                 [style.color]="element.style?.color ?? '#111827'"
                 [style.text-align]="element.style?.alignment ?? 'left'"
               >
-                {{ element.content?.value }}
+                {{ previewText(element) }}
               </div>
             }
 
@@ -274,6 +299,41 @@
               >
                 {{ element.content?.value }}
               </div>
+            }
+
+            @if (element.type === 'qrCode') {
+              @if (previewImageSource(element); as qrImage) {
+                <img [src]="qrImage" alt="Código QR" />
+              } @else {
+                <div class="image-placeholder">
+                  <span>▣</span>
+                  <small>{{ element.content?.dataPath || 'Runtime.QrImage' }}</small>
+                </div>
+              }
+            }
+
+            @if (element.type === 'pageNumber') {
+              <div class="text-content">
+                {{ previewText(element) || element.content?.format }}
+              </div>
+            }
+
+            @if (element.type === 'line') {
+              <div
+                class="line-content"
+                [style.border-color]="element.style?.color ?? '#555555'"
+              ></div>
+            }
+
+            @if (element.type === 'barcode') {
+              <div class="image-placeholder">
+                <span>▥▥▥</span>
+                <small>{{ element.content?.dataPath || 'Código de barras' }}</small>
+              </div>
+            }
+
+            @if (element.type === 'pageBreak') {
+              <div class="page-break-content">Salto de página</div>
             }
 
             @if (element.type === 'table') {
