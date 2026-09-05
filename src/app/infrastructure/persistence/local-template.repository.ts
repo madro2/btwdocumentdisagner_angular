@@ -25,6 +25,10 @@ export class LocalTemplateRepository implements TemplateRepository {
     return of(this.read().find((template) => template.document.id === id) ?? null);
   }
 
+    update(id: string, template: DesignContract): Observable<void> {
+    return this.save({ ...template, document: { ...template.document, id } });
+  }
+
   save(template: DesignContract): Observable<void> {
     const templates = this.read();
     const index = templates.findIndex(

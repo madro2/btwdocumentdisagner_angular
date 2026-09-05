@@ -32,6 +32,10 @@ export class BindingEvaluatorService {
     return this.xml.load(xml);
   }
 
+  currentXmlRaw(): string | null {
+    return this.xml.rawXml();
+  }
+
   availablePaths(): string[] {
     return this.xml.paths();
   }

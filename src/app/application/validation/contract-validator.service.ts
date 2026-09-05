@@ -47,11 +47,18 @@ export class ContractValidatorService {
       errors,
     );
 
+    // Los bindings pendientes son advertencias en plantillas en desarrollo,
+    // no deben bloquear el uso ni la exportación del diseño incompleto.
+    return errors;
+  }
+
+  warnings(contract: DesignContract): string[] {
+    const warnings: string[] = [];
     for (const pending of contract.validation?.pendingBindings ?? []) {
       const bindingId = typeof pending === 'object' && pending !== null ? (pending as any).id || JSON.stringify(pending) : pending;
-      errors.push(`Campo dinámico sin configurar (Binding pendiente): ${bindingId}`);
+      warnings.push(`Campo dinámico sin configurar (Binding pendiente): ${bindingId}`);
     }
-    return errors;
+    return warnings;
   }
 
   private validateComponents(

@@ -24,6 +24,7 @@ export type RepeatOn = 'allPages' | 'firstPage' | 'lastPage';
 export type BehaviorMode = 'fixed' | 'responsive' | 'flow';
 export type BorderStyle = 'solid' | 'none' | 'dashed' | 'dotted';
 export type TableMode = 'fixed' | 'dynamic' | 'fixedRows' | 'record' | 'collection';
+export type TableBorderPreset = 'all' | 'horizontal' | 'outer' | 'vertical' | 'headerOnly' | 'none';
 
 export interface PageSizeDefinition {
   label: string;
@@ -156,6 +157,10 @@ export interface ComponentStyle {
     alignment?: TextAlignment;
     background?: string;
   };
+  borderPreset?: TableBorderPreset;
+  alternateRowBackground?: string;
+  headerHeightMm?: number;
+  cellPaddingMm?: number;
 }
 
 export interface TableColumn {
@@ -170,6 +175,12 @@ export interface TableColumn {
   visibilityCondition?: string;
   alignment?: TextAlignment;
   style?: ComponentStyle;
+  headerBackground?: string;
+  headerColor?: string;
+  headerAlignment?: TextAlignment;
+  headerBold?: boolean;
+  headerItalic?: boolean;
+  headerFontSizePt?: number;
 }
 
 export interface TableField {

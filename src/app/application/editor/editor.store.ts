@@ -328,6 +328,10 @@ export class EditorStore {
     this.canRedo.set(false);
   }
 
+  validationWarnings(): string[] {
+    return this.validator.warnings(this.templateState());
+  }
+
   rename(name: string): void {
     this.pushHistory('rename');
     this.templateState.update((template) => ({
@@ -734,6 +738,15 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
+    updateCurrentVersion(): Observable<void> {
+    this.templateState.update((template) => ({
+      ...template,
+      updatedAt: new Date().toISOString(),
+    }));
+    const current = this.templateState();
+    return this.repository.update(current.document.id, current);
+  }
+
   save(): Observable<void> {
     const updatedAt = new Date().toISOString();
     this.templateState.update((template) => ({ ...template, updatedAt }));
@@ -795,6 +808,20 @@ export class EditorStore {
     const formData = new FormData();
     formData.append('file', file);
     return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
+  }
+
+  generatePreviewPdf(payload?: string, contentType?: string): Observable<Blob> {
+    const template = this.templateState();
+    const { updatedAt: _updatedAt, ...contract } = template;
+    const body = {
+      designJson: JSON.stringify(contract),
+      payload: payload || '{}',
+      contentType: contentType || 'application/json',
+    };
+
+    return this.http.post(`${environment.apiBaseUrl}/pdf/preview-direct`, body, {
+      responseType: 'blob',
+    });
   }
 
   private updateById(id: string, change: (element: DesignComponent) => DesignComponent): void {

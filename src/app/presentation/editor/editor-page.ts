@@ -1230,17 +1230,120 @@ export class EditorPage {
     this.status.set('Columna agregada');
   }
 
-  updateColumn(column: TableColumn, property: 'title' | 'dataPath', event: Event): void {
+  updateColumn(
+    column: TableColumn,
+    property:
+      | 'title'
+      | 'dataPath'
+      | 'widthMm'
+      | 'alignment'
+      | 'headerBackground'
+      | 'headerColor'
+      | 'headerAlignment'
+      | 'headerBold'
+      | 'headerItalic'
+      | 'headerFontSizePt',
+    event: Event | any,
+  ): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
 
-    const value = (event.target as HTMLInputElement).value;
+    let value: any;
+    if (event && event.target) {
+      const target = event.target as HTMLInputElement | HTMLSelectElement;
+      if (property === 'widthMm' || property === 'headerFontSizePt') {
+        value = target.value ? Number(target.value) : undefined;
+      } else if (property === 'headerBold' || property === 'headerItalic') {
+        value = (target as HTMLInputElement).checked;
+      } else {
+        value = target.value;
+      }
+    } else {
+      value = event;
+    }
+
     this.store.updateElement(selected.id, {
       columns: this.tableColumns(selected).map((item) =>
         item.id === column.id ? { ...item, [property]: value } : item,
       ),
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  toggleColumnHeaderProp(column: TableColumn, prop: 'headerBold' | 'headerItalic'): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const current = column[prop] ?? (prop === 'headerBold' ? true : false);
+    this.updateColumn(column, prop, !current);
+  }
+
+  distributeColumnsEqually(): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !selected.columns?.length) return;
+
+    const totalWidth = selected.position.width || 190;
+    const count = selected.columns.length;
+    const equalWidth = Math.round((totalWidth / count) * 10) / 10;
+
+    this.store.updateElement(selected.id, {
+      columns: selected.columns.map((c) => ({ ...c, widthMm: equalWidth })),
+    });
+    this.status.set('Columnas distribuidas equitativamente');
+  }
+
+  setTableBorderPreset(
+    preset: 'all' | 'horizontal' | 'outer' | 'vertical' | 'headerOnly' | 'none',
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateStyle(selected.id, {
+      borderPreset: preset,
+      border: {
+        ...selected.style?.border,
+        style: preset === 'none' ? 'none' : 'solid',
+        widthPt: selected.style?.border?.widthPt || 0.75,
+        color: selected.style?.border?.color || '#cbd5e1',
+      },
+    });
+    this.status.set(`Estilo de bordes: ${preset}`);
+  }
+
+  updateTableHeader(
+    property: 'bold' | 'background' | 'alignment',
+    value: boolean | string,
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateStyle(selected.id, {
+      header: {
+        ...selected.style?.header,
+        [property]: value,
+      },
+    });
+  }
+
+  updateTableCellPadding(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = Number((event.target as HTMLInputElement).value);
+    this.store.updateStyle(selected.id, { cellPaddingMm: val });
+  }
+
+  updateTableRowHeight(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = Number((event.target as HTMLInputElement).value);
+    this.store.updateStyle(selected.id, { rowHeightMm: val });
+  }
+
+  updateAlternateRowBackground(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = (event.target as HTMLInputElement).value;
+    this.store.updateStyle(selected.id, { alternateRowBackground: val });
   }
 
   removeColumn(column: TableColumn): void {
@@ -1278,11 +1381,52 @@ export class EditorPage {
     });
   }
 
+  updateBorder(property: 'color' | 'widthPt' | 'style' | 'radiusMm', value: unknown): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const currentBorder = selected.style?.border ?? {
+      color: '#000000',
+      widthPt: 0,
+      style: 'solid',
+      radiusMm: 0,
+    };
+    this.store.updateStyle(selected.id, {
+      border: {
+        ...currentBorder,
+        [property]: value,
+      },
+    });
+  }
+
+  updatePadding(value: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      padding: value,
+    });
+  }
+
   toggleBold(): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
     this.store.updateStyle(selected.id, {
       bold: !selected.style?.bold,
+    });
+  }
+
+  toggleItalic(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      italic: !selected.style?.italic,
+    });
+  }
+
+  toggleUnderline(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      underline: !selected.style?.underline,
     });
   }
 
@@ -1333,15 +1477,25 @@ export class EditorPage {
     this.store.versionSaveInfo().subscribe({
       next: async ({ exists, latestVersion, nextVersion }) => {
         if (exists) {
-          const confirmed = await confirmAction({
-            title: 'Se creará una nueva versión',
-            text:
-              `La última versión de este formato es la ${latestVersion}. ` +
-              `Los cambios se guardarán como versión ${nextVersion} ` +
-              'y la versión actual se conservará sin cambios.',
-            confirmText: `Crear versión ${nextVersion}`,
+          const updateOption = await confirmAction({
+            title: "¿Cómo deseas guardar?",
+            text: `El formato ya existe (versión ${latestVersion}). ¿Deseas actualizar la versión actual o crear la nueva versión ${nextVersion}?`,
+            confirmText: "Actualizar actual",
+            cancelText: `Crear versión ${nextVersion}`,
           });
-          if (!confirmed) return;
+
+          if (updateOption) {
+            this.store.updateCurrentVersion().subscribe({
+              next: () => {
+                this.status.set("Versión actual actualizada con éxito");
+                notifySuccess("Formato actualizado", this.store.template().document.name || undefined);
+              },
+              error: () => {
+                this.status.set("No fue posible actualizar la versión actual.");
+              },
+            });
+            return;
+          }
 
           this.store.saveAsNewVersion(nextVersion).subscribe({
             next: (versionedTemplate) => {
@@ -1350,7 +1504,7 @@ export class EditorPage {
                 `Versión ${nextVersion} creada`,
                 versionedTemplate.document.name || undefined,
               );
-              void this.router.navigate(['/editor', versionedTemplate.document.id], {
+              void this.router.navigate(["/editor", versionedTemplate.document.id], {
                 replaceUrl: true,
               });
             },
@@ -1365,18 +1519,18 @@ export class EditorPage {
 
         this.store.save().subscribe({
           next: () => {
-            this.status.set('Formato guardado en el servidor');
-            notifySuccess('Formato guardado', this.store.template().document.name || undefined);
+            this.status.set("Formato guardado en el servidor");
+            notifySuccess("Formato guardado", this.store.template().document.name || undefined);
             const newId = this.store.template().document.id;
-            void this.router.navigate(['/editor', newId], { replaceUrl: true });
+            void this.router.navigate(["/editor", newId], { replaceUrl: true });
           },
           error: () => {
-            this.status.set('No fue posible guardar el formato.');
+            this.status.set("No fue posible guardar el formato.");
           },
         });
       },
       error: () => {
-        this.status.set('No fue posible consultar las versiones existentes del formato.');
+        this.status.set("No fue posible consultar las versiones existentes del formato.");
       },
     });
   }
@@ -1395,16 +1549,18 @@ export class EditorPage {
     notifySuccess('Formato nuevo listo');
   }
 
+  readonly isGeneratingPdf = signal(false);
+
   async exportJson(): Promise<void> {
     const errors = this.store.validationErrors();
     if (errors.length) {
       const confirmed = await confirmAction({
-        title: 'El formato tiene errores',
-        text: `Error detectado: ${errors[0]}.\n¿Deseas exportarlo de todos modos?`,
+        title: 'El formato tiene advertencias',
+        text: `Advertencia detectada: ${errors[0]}.\n¿Deseas exportarlo de todos modos?`,
         confirmText: 'Sí, exportar',
       });
       if (!confirmed) {
-        this.status.set('Exportación cancelada por errores de validación.');
+        this.status.set('Exportación cancelada.');
         return;
       }
     }
@@ -1427,6 +1583,37 @@ export class EditorPage {
     URL.revokeObjectURL(url);
     this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
     notifySuccess('JSON exportado', `${template.document.name || 'plantilla'}.json`);
+  }
+
+  generatePdfPreview(): void {
+    if (this.isGeneratingPdf()) return;
+
+    this.isGeneratingPdf.set(true);
+    this.status.set('Generando PDF desde el diseño actual...');
+
+    // Usar datos del runtime o XML si se han cargado previamente en el evaluador de bindings
+    const rawXml = this.bindings.currentXmlRaw?.();
+    const payload = rawXml || '{}';
+    const contentType = rawXml ? 'application/xml; charset=utf-8' : 'application/json';
+
+    this.store.generatePreviewPdf(payload, contentType).subscribe({
+      next: (pdfBlob) => {
+        this.isGeneratingPdf.set(false);
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${this.store.template().document.name || 'documento'}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+        this.status.set('PDF generado y descargado correctamente');
+        notifySuccess('PDF generado', 'La descarga comenzará automáticamente');
+      },
+      error: (err) => {
+        this.isGeneratingPdf.set(false);
+        const message = err?.error?.message || err?.message || 'Error al generar el PDF';
+        this.status.set(`Error generando PDF: ${message}`);
+      },
+    });
   }
 
   async remove(): Promise<void> {

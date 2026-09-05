@@ -42,6 +42,18 @@ export class ApiTemplateRepository implements TemplateRepository {
       .pipe(map((dto) => toDesignContract(dto)));
   }
 
+    update(id: string, template: DesignContract): Observable<void> {
+    const payload: PdfDesignTemplateDto = {
+      id: id,
+      documentType: template.document.type || "document",
+      designName: template.document.name || "Unnamed",
+      designVersion: template.document.version || 1,
+      jsonConfiguration: JSON.stringify(template),
+      creationDate: new Date().toISOString(),
+    };
+    return this.http.put<void>(`${this.apiUrl}/${id}`, payload);
+  }
+
   save(template: DesignContract): Observable<void> {
     const payload: PdfDesignTemplateDto = {
       id: template.document.id,

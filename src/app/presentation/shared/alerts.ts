@@ -32,6 +32,7 @@ export async function confirmAction(options: {
   title: string;
   text?: string;
   confirmText?: string;
+  cancelText?: string;
 }): Promise<boolean> {
   const result = await Swal.fire({
     title: options.title,
@@ -39,7 +40,7 @@ export async function confirmAction(options: {
     icon: 'warning',
     showCancelButton: true,
     confirmButtonText: options.confirmText ?? 'Sí, continuar',
-    cancelButtonText: 'Cancelar',
+    cancelButtonText: options.cancelText ?? 'Cancelar',
     confirmButtonColor: BRAND,
     reverseButtons: true,
     focusCancel: true,

@@ -8,9 +8,11 @@ export interface XmlBindingScope {
 @Injectable({ providedIn: 'root' })
 export class XmlDataSourceService {
   private readonly documentState = signal<XMLDocument | null>(null);
+  private readonly rawXmlState = signal<string | null>(null);
   private dataSource?: DataSourceDefinition;
 
   readonly document = this.documentState.asReadonly();
+  readonly rawXml = this.rawXmlState.asReadonly();
 
   configure(dataSource?: DataSourceDefinition): void {
     this.dataSource = dataSource;
@@ -23,6 +25,7 @@ export class XmlDataSourceService {
     const parserError = document.querySelector('parsererror');
     if (parserError) return `XML inválido: ${parserError.textContent ?? ''}`;
 
+    this.rawXmlState.set(xml);
     this.documentState.set(document);
     return hasMojibake
       ? 'Advertencia: el XML se cargó, pero contiene texto con codificación dañada (mojibake).'
@@ -30,6 +33,7 @@ export class XmlDataSourceService {
   }
 
   clear(): void {
+    this.rawXmlState.set(null);
     this.documentState.set(null);
   }
 
