@@ -351,7 +351,9 @@
           [style.height.mm]="element.position.height"
           [style.background]="element.style?.background ?? 'transparent'"
           [style.border-color]="element.style?.border?.color ?? 'transparent'"
-          [style.border-width.px]="element.style?.border?.widthPt ?? 0"
+          [style.border-width.pt]="element.style?.border?.widthPt ?? 0"
+          [style.border-style]="element.style?.border?.style ?? 'solid'"
+          [style.border-radius.mm]="element.style?.border?.radiusMm ?? 0"
           [style.padding.mm]="element.style?.padding ?? 0"
           (pointerdown)="startInteraction($event, element, 'move')"
           (click)="select($event, element)"
@@ -1008,6 +1010,79 @@
             </p>
           </section>
         }
+
+        <section class="property-section border-customization-section">
+          <h3>Bordes y estilo</h3>
+          <div class="field-grid">
+            <label>
+              Grosor (pt)
+              <input
+                type="number"
+                min="0"
+                max="20"
+                step="0.5"
+                [value]="selected.style?.border?.widthPt ?? 0"
+                (input)="updateBorder('widthPt', +$any($event.target).value)"
+              />
+            </label>
+            <label>
+              Radio (mm)
+              <input
+                type="number"
+                min="0"
+                max="50"
+                step="0.5"
+                [value]="selected.style?.border?.radiusMm ?? 0"
+                (input)="updateBorder('radiusMm', +$any($event.target).value)"
+              />
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label>
+              Color borde
+              <input
+                type="color"
+                [value]="selected.style?.border?.color ?? '#000000'"
+                (input)="updateBorder('color', $any($event.target).value)"
+              />
+            </label>
+            <label>
+              Tipo de borde
+              <select
+                [value]="selected.style?.border?.style ?? 'solid'"
+                (change)="updateBorder('style', $any($event.target).value)"
+              >
+                <option value="none">Sin borde</option>
+                <option value="solid">Sólido</option>
+                <option value="dashed">Discontinuo (guiones)</option>
+                <option value="dotted">Punteado</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label>
+              Fondo (relleno)
+              <input
+                type="color"
+                [value]="selected.style?.background ?? '#ffffff'"
+                (input)="updateColor('background', $event)"
+              />
+            </label>
+            <label>
+              Margen interno (mm)
+              <input
+                type="number"
+                min="0"
+                max="30"
+                step="0.5"
+                [value]="selected.style?.padding ?? 0"
+                (input)="updatePadding(+$any($event.target).value)"
+              />
+            </label>
+          </div>
+        </section>
 
         <section class="property-section event-section">
           <h3>Eventos</h3>

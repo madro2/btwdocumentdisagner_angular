@@ -991,6 +991,31 @@ export class EditorPage {
     });
   }
 
+  updateBorder(property: 'color' | 'widthPt' | 'style' | 'radiusMm', value: unknown): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const currentBorder = selected.style?.border ?? {
+      color: '#000000',
+      widthPt: 0,
+      style: 'solid',
+      radiusMm: 0,
+    };
+    this.store.updateStyle(selected.id, {
+      border: {
+        ...currentBorder,
+        [property]: value,
+      },
+    });
+  }
+
+  updatePadding(value: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      padding: value,
+    });
+  }
+
   toggleBold(): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
