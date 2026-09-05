@@ -72,6 +72,15 @@ interface AlignmentGuide {
 }
 
 const CSS_MM_IN_PX = 96 / 25.4;
+import {
+  UiIconComponent,
+  UiAccordionComponent,
+  UiNumberFieldComponent,
+  UiColorPickerComponent,
+  UiDropdownMenuComponent,
+  DropdownItem,
+} from '../ui';
+
 const SNAP_MM = 1.5;
 const INDENT_STEP_MM = 4;
 const MAX_INDENT_MM = 40;
@@ -84,7 +93,16 @@ const NATIONAL_INVOICE_TEMPLATE = {
 
 @Component({
   selector: 'app-editor-page',
-  imports: [FormsModule, NgTemplateOutlet, RouterLink],
+  imports: [
+    FormsModule,
+    NgTemplateOutlet,
+    RouterLink,
+    UiIconComponent,
+    UiAccordionComponent,
+    UiNumberFieldComponent,
+    UiColorPickerComponent,
+    UiDropdownMenuComponent,
+  ],
   templateUrl: './editor-page.html',
   styleUrl: './editor-page.css',
 })
@@ -1125,6 +1143,15 @@ export class EditorPage {
     this.store.resizeElement(interaction.id, { width, height });
   }
 
+    updateNumberDirect(property: "x" | "y" | "width" | "height", val: number): void {
+    const selected = this.store.selectedElement();
+    if (!selected || isNaN(val)) return;
+    this.store.updatePosition(selected.id, {
+      [property]: val,
+    });
+    this.status.set("Cambios sin guardar");
+  }
+
   updateNumber(property: 'x' | 'y' | 'width' | 'height', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
@@ -1339,6 +1366,13 @@ export class EditorPage {
     this.store.updateStyle(selected.id, { rowHeightMm: val });
   }
 
+    updateAlternateRowBackgroundDirect(color: string): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, { alternateRowBackground: color });
+    this.status.set("Cambios sin guardar");
+  }
+
   updateAlternateRowBackground(event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
@@ -1550,6 +1584,70 @@ export class EditorPage {
   }
 
   readonly isGeneratingPdf = signal(false);
+
+  // UI Library State & Menus
+  readonly fileMenuOpen = signal(false);
+  readonly fileMenuItems: DropdownItem[] = [
+    { id: "new", label: "Nuevo documento", icon: "file" },
+    { id: "my-formats", label: "Mis formatos", icon: "folder" },
+    { id: "div1", label: "", divider: true },
+    { id: "import-json", label: "Importar JSON..." },
+    { id: "import-xml", label: "Cargar XML de prueba..." },
+    { id: "import-sys", label: "Cargar datos de sistema..." },
+    { id: "div2", label: "", divider: true },
+    { id: "export-json", label: "Exportar JSON" },
+  ];
+
+  // Accordion Sections State
+  readonly accordionState = signal<Record<string, boolean>>({
+    geometry: true,
+    typography: true,
+    borders: true,
+    table: true,
+    data: true,
+    container: true,
+  });
+
+  toggleSection(section: string): void {
+    this.accordionState.update((state) => ({
+      ...state,
+      [section]: !state[section],
+    }));
+  }
+
+  isSectionExpanded(section: string): boolean {
+    return this.accordionState()[section] ?? true;
+  }
+
+  handleFileMenuAction(actionId: string): void {
+    switch (actionId) {
+      case "new":
+        this.createNew();
+        break;
+      case "my-formats":
+        void this.router.navigate(["/"]);
+        break;
+      case "import-json": {
+        const input = document.getElementById("hidden-import-json") as HTMLInputElement;
+        input?.click();
+        break;
+      }
+      case "import-xml": {
+        const input = document.getElementById("hidden-import-xml") as HTMLInputElement;
+        input?.click();
+        break;
+      }
+      case "import-sys": {
+        const input = document.getElementById("hidden-import-sys") as HTMLInputElement;
+        input?.click();
+        break;
+      }
+      case "export-json":
+        void this.exportJson();
+        break;
+    }
+  }
+
 
   async exportJson(): Promise<void> {
     const errors = this.store.validationErrors();

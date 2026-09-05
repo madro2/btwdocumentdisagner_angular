@@ -6,16 +6,55 @@
       </span>
       <div>
         <strong>Document Designer</strong>
-        <small>Editor de plantillas</small>
+        <small>Editor BTW</small>
       </div>
     </div>
 
-    <input
-      class="template-name"
-      aria-label="Nombre de la plantilla"
-      [ngModel]="store.template().document.name"
-      (ngModelChange)="store.rename($event)"
-    />
+    <div class="toolbar-menu-bar">
+      <ui-dropdown-menu
+        label="Archivo"
+        [items]="fileMenuItems"
+        [isOpen]="fileMenuOpen()"
+        (toggleChange)="fileMenuOpen.set($event)"
+        (itemSelect)="handleFileMenuAction($event)"
+      />
+
+      <input
+        type="file"
+        id="hidden-import-json"
+        hidden
+        accept="application/json,.json"
+        (change)="importJson($event)"
+      />
+      <input
+        type="file"
+        id="hidden-import-xml"
+        hidden
+        accept="application/xml,text/xml,.xml"
+        (change)="importXml($event)"
+      />
+      <input
+        type="file"
+        id="hidden-import-sys"
+        hidden
+        accept="application/json,.json"
+        (change)="importSystem($event)"
+      />
+    </div>
+
+    <div class="toolbar-center">
+      <input
+        class="template-name"
+        aria-label="Nombre de la plantilla"
+        [ngModel]="store.template().document.name"
+        (ngModelChange)="store.rename($event)"
+        placeholder="Nombre de la plantilla"
+      />
+      <span class="status-indicator">
+        <span class="status-dot"></span>
+        {{ status() }}
+      </span>
+    </div>
 
     <div class="toolbar-actions">
       <button
@@ -26,7 +65,7 @@
         [disabled]="!store.canUndo()"
         (click)="undo()"
       >
-        ↶
+        <ui-icon name="undo" [size]="15" />
       </button>
       <button
         class="button ghost icon-button"
@@ -36,37 +75,23 @@
         [disabled]="!store.canRedo()"
         (click)="redo()"
       >
-        ↷
+        <ui-icon name="redo" [size]="15" />
       </button>
-      <a class="button ghost" routerLink="/">Mis formatos</a>
-      <button class="button ghost" type="button" (click)="createNew()">Nueva</button>
-      <label class="button ghost">
-        Importar JSON
-        <input hidden type="file" accept="application/json,.json" (change)="importJson($event)" />
-      </label>
-      <label class="button ghost">
-        Cargar XML
-        <input
-          hidden
-          type="file"
-          accept="application/xml,text/xml,.xml"
-          (change)="importXml($event)"
-        />
-      </label>
-      <label class="button ghost">
-        Cargar datos del sistema
-        <input
-          hidden
-          type="file"
-          accept="application/json,.json"
-          (change)="importSystem($event)"
-        />
-      </label>
-      <button class="button ghost" type="button" (click)="exportJson()">Exportar JSON</button>
-      <button class="button ghost" type="button" [disabled]="isGeneratingPdf()" (click)="generatePdfPreview()">
-        {{ isGeneratingPdf() ? 'Generando...' : 'Descargar PDF' }}
+
+      <button
+        class="button secondary"
+        type="button"
+        [disabled]="isGeneratingPdf()"
+        (click)="generatePdfPreview()"
+      >
+        <ui-icon name="download" [size]="14" />
+        <span>{{ isGeneratingPdf() ? 'Generando...' : 'Descargar PDF' }}</span>
       </button>
-      <button class="button primary" type="button" (click)="save()">Guardar</button>
+
+      <button class="button primary" type="button" (click)="save()">
+        <ui-icon name="save" [size]="14" />
+        <span>Guardar</span>
+      </button>
     </div>
   </header>
 
@@ -187,24 +212,71 @@
           <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
         </button>
 
-        @for (
-          type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak'];
-          track type
-        ) {
-          <button
-            class="palette-item compact"
-            type="button"
-            draggable="true"
-            (dragstart)="startPaletteDrag($event, $any(type))"
-            (click)="add($any(type))"
-          >
-            <span class="item-icon">{{ iconFor($any(type)) }}</span>
-            <span
-              ><strong>{{ type }}</strong
-              ><small>Contrato 3.0</small></span
-            >
-          </button>
-        }
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'line')"
+          (click)="add('line')"
+        >
+          <span class="item-icon"><ui-icon name="line" [size]="18" /></span>
+          <span><strong>Línea</strong><small>Divisor horizontal</small></span>
+        </button>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'rectangle')"
+          (click)="add('rectangle')"
+        >
+          <span class="item-icon"><ui-icon name="rectangle" [size]="18" /></span>
+          <span><strong>Rectángulo</strong><small>Fondo o tarjeta</small></span>
+        </button>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'barcode')"
+          (click)="add('barcode')"
+        >
+          <span class="item-icon"><ui-icon name="barcode" [size]="18" /></span>
+          <span><strong>Código de barras</strong><small>EAN / Code128</small></span>
+        </button>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'qrCode')"
+          (click)="add('qrCode')"
+        >
+          <span class="item-icon"><ui-icon name="qrcode" [size]="18" /></span>
+          <span><strong>Código QR</strong><small>CUFE o URL</small></span>
+        </button>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'pageNumber')"
+          (click)="add('pageNumber')"
+        >
+          <span class="item-icon"><ui-icon name="page-number" [size]="18" /></span>
+          <span><strong>Núm. de página</strong><small>Paginación dinámica</small></span>
+        </button>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'pageBreak')"
+          (click)="add('pageBreak')"
+        >
+          <span class="item-icon"><ui-icon name="page-break" [size]="18" /></span>
+          <span><strong>Salto de página</strong><small>División de sección</small></span>
+        </button>
 
         <button
           class="palette-item"
@@ -735,53 +807,52 @@
           </div>
         </section>
 
-        <section class="property-section">
-          <h3>Posición y tamaño</h3>
+        <ui-accordion
+          title="Posición y Dimensiones"
+          [expanded]="isSectionExpanded('geometry')"
+          (toggleChange)="toggleSection('geometry')"
+        >
           <div class="field-grid">
-            <label
-              >X (mm)<input
-                type="number"
-                [value]="selected.position.x"
-                (input)="updateNumber('x', $event)"
-            /></label>
-            <label
-              >Y (mm)<input
-                type="number"
-                [value]="selected.position.y"
-                (input)="updateNumber('y', $event)"
-            /></label>
-            <label
-              >Ancho<input
-                type="number"
-                min="5"
-                [value]="selected.position.width"
-                (input)="updateNumber('width', $event)"
-            /></label>
-            <label
-              >Alto<input
-                type="number"
-                min="5"
-                [value]="selected.position.height"
-                (input)="updateNumber('height', $event)"
-            /></label>
+            <ui-number-field
+              label="Eje X"
+              unit="mm"
+              [value]="selected.position.x"
+              (valueChange)="updateNumberDirect('x', $event)"
+            />
+            <ui-number-field
+              label="Eje Y"
+              unit="mm"
+              [value]="selected.position.y"
+              (valueChange)="updateNumberDirect('y', $event)"
+            />
+            <ui-number-field
+              label="Ancho"
+              unit="mm"
+              [min]="2"
+              [value]="selected.position.width"
+              (valueChange)="updateNumberDirect('width', $event)"
+            />
+            <ui-number-field
+              label="Alto"
+              unit="mm"
+              [min]="2"
+              [value]="selected.position.height"
+              (valueChange)="updateNumberDirect('height', $event)"
+            />
           </div>
           <label class="field" style="margin-top: 10px">
-            Rotación del contenido
+            Rotación
             <select
               [value]="selected.rotationDegrees ?? 0"
               (change)="updateRotation($event)"
             >
               <option value="0">0° · horizontal</option>
-              <option value="-90">-90° · vertical (como en el PDF)</option>
+              <option value="-90">-90° · vertical</option>
               <option value="90">90° · vertical invertido</option>
               <option value="180">180°</option>
             </select>
           </label>
-          <p class="hint">
-            Para la franja del proveedor tecnológico elige <strong>-90°</strong> y guarda la
-            plantilla; así el editor y el PDF quedan alineados.
-          </p>
-        </section>
+        </ui-accordion>
 
         <section class="property-section">
           <h3>Agrupación</h3>
@@ -1045,8 +1116,11 @@
             </section>
           }
 
-          <section class="property-section table-style-section">
-            <h3>Diseño de Tabla y Celdas</h3>
+          <ui-accordion
+            title="Diseño de Tabla y Celdas"
+            [expanded]="isSectionExpanded('table')"
+            (toggleChange)="toggleSection('table')"
+          >
 
             <div class="field">
               <span class="control-label" style="font-weight: 600; font-size: 12px; margin-bottom: 4px; display: block;">
@@ -1142,24 +1216,18 @@
             </div>
 
             <div class="field-grid">
-              <label>
-                Fondo encabezado
-                <input
-                  type="color"
-                  [value]="selected.style?.header?.background ?? '#f3f4f6'"
-                  (input)="updateTableHeader('background', $any($event.target).value)"
-                />
-              </label>
-              <label>
-                Fila alterna (cebra)
-                <input
-                  type="color"
-                  [value]="selected.style?.alternateRowBackground ?? '#ffffff'"
-                  (input)="updateAlternateRowBackground($event)"
-                />
-              </label>
+              <ui-color-picker
+                label="Fondo encabezado"
+                [value]="selected.style?.header?.background ?? '#f3f4f6'"
+                (valueChange)="updateTableHeader('background', $event)"
+              />
+              <ui-color-picker
+                label="Fila alterna (cebra)"
+                [value]="selected.style?.alternateRowBackground ?? '#ffffff'"
+                (valueChange)="updateAlternateRowBackgroundDirect($event)"
+              />
             </div>
-          </section>
+          </ui-accordion>
         }
 
         @if (selected.type === 'text' || selected.type === 'link' || selected.type === 'table') {
