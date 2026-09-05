@@ -175,6 +175,12 @@ export interface TableColumn {
   visibilityCondition?: string;
   alignment?: TextAlignment;
   style?: ComponentStyle;
+  headerBackground?: string;
+  headerColor?: string;
+  headerAlignment?: TextAlignment;
+  headerBold?: boolean;
+  headerItalic?: boolean;
+  headerFontSizePt?: number;
 }
 
 export interface TableField {

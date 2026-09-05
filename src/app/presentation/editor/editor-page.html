@@ -471,10 +471,13 @@
                     @for (column of tableColumns(element); track column.id) {
                       <th
                         [style.text-align]="
-                          column.alignment ?? element.style?.header?.alignment ?? 'left'
+                          column.headerAlignment ?? column.alignment ?? element.style?.header?.alignment ?? 'left'
                         "
-                        [style.background]="element.style?.header?.background ?? null"
-                        [style.font-weight]="element.style?.header?.bold === false ? 400 : 700"
+                        [style.background]="column.headerBackground ?? element.style?.header?.background ?? null"
+                        [style.color]="column.headerColor ?? element.style?.color ?? null"
+                        [style.font-weight]="(column.headerBold !== undefined ? column.headerBold : element.style?.header?.bold !== false) ? 700 : 400"
+                        [style.font-style]="column.headerItalic ? 'italic' : 'normal'"
+                        [style.font-size.pt]="column.headerFontSizePt ?? element.style?.fontSizePt ?? null"
                         [style.padding.mm]="element.style?.cellPaddingMm ?? 1"
                       >
                         {{ column.title }}
@@ -781,52 +784,108 @@
               </div>
 
               @for (column of tableColumns(selected) ?? []; track column.id) {
-                <div class="column-row" style="display: grid; grid-template-columns: 1fr 1fr 65px 75px 24px; gap: 4px; align-items: center; margin-bottom: 6px;">
-                  <input
-                    type="text"
-                    placeholder="Título"
-                    title="Encabezado"
-                    aria-label="Encabezado de la columna"
-                    [value]="column.title ?? ''"
-                    (input)="updateColumn(column, 'title', $event)"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Ruta"
-                    title="Ruta XML"
-                    aria-label="Ruta XML de la columna"
-                    [value]="column.dataPath ?? ''"
-                    (input)="updateColumn(column, 'dataPath', $event)"
-                  />
-                  <input
-                    type="number"
-                    min="5"
-                    max="300"
-                    step="1"
-                    placeholder="mm"
-                    title="Ancho en mm"
-                    aria-label="Ancho de la columna en mm"
-                    [value]="column.widthMm ?? ''"
-                    (input)="updateColumn(column, 'widthMm', $event)"
-                  />
-                  <select
-                    title="Alineación"
-                    aria-label="Alineación de columna"
-                    [value]="column.alignment ?? 'left'"
-                    (change)="updateColumn(column, 'alignment', $event)"
-                  >
-                    <option value="left">Izq</option>
-                    <option value="center">Cent</option>
-                    <option value="right">Der</option>
-                  </select>
-                  <button
-                    class="column-remove"
-                    type="button"
-                    aria-label="Eliminar columna"
-                    (click)="removeColumn(column)"
-                  >
-                    ✕
-                  </button>
+                <div class="column-item" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px; margin-bottom: 8px;">
+                  <div class="column-row" style="display: grid; grid-template-columns: 1fr 1fr 60px 70px 24px; gap: 4px; align-items: center;">
+                    <input
+                      type="text"
+                      placeholder="Título"
+                      title="Encabezado"
+                      aria-label="Encabezado de la columna"
+                      [value]="column.title ?? ''"
+                      (input)="updateColumn(column, 'title', $event)"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Ruta"
+                      title="Ruta XML"
+                      aria-label="Ruta XML de la columna"
+                      [value]="column.dataPath ?? ''"
+                      (input)="updateColumn(column, 'dataPath', $event)"
+                    />
+                    <input
+                      type="number"
+                      min="5"
+                      max="300"
+                      step="1"
+                      placeholder="mm"
+                      title="Ancho en mm"
+                      aria-label="Ancho de la columna en mm"
+                      [value]="column.widthMm ?? ''"
+                      (input)="updateColumn(column, 'widthMm', $event)"
+                    />
+                    <select
+                      title="Alineación cuerpo"
+                      aria-label="Alineación de columna"
+                      [value]="column.alignment ?? 'left'"
+                      (change)="updateColumn(column, 'alignment', $event)"
+                    >
+                      <option value="left">Izq</option>
+                      <option value="center">Cent</option>
+                      <option value="right">Der</option>
+                    </select>
+                    <button
+                      class="column-remove"
+                      type="button"
+                      aria-label="Eliminar columna"
+                      (click)="removeColumn(column)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <!-- Personalización específica del encabezado de esta columna -->
+                  <div style="display: grid; grid-template-columns: 1fr 1fr 65px 65px; gap: 4px; align-items: center; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #cbd5e1; font-size: 11px;">
+                    <label style="display: flex; align-items: center; gap: 3px;" title="Color de fondo del encabezado de esta columna">
+                      Fondo:
+                      <input
+                        type="color"
+                        style="width: 22px; height: 20px; padding: 0; border: none; cursor: pointer;"
+                        [value]="column.headerBackground ?? selected.style?.header?.background ?? '#f3f4f6'"
+                        (input)="updateColumn(column, 'headerBackground', $event)"
+                      />
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 3px;" title="Color del texto del encabezado">
+                      Texto:
+                      <input
+                        type="color"
+                        style="width: 22px; height: 20px; padding: 0; border: none; cursor: pointer;"
+                        [value]="column.headerColor ?? '#111827'"
+                        (input)="updateColumn(column, 'headerColor', $event)"
+                      />
+                    </label>
+                    <select
+                      style="font-size: 10px; padding: 2px;"
+                      title="Alineación encabezado"
+                      [value]="column.headerAlignment ?? column.alignment ?? 'center'"
+                      (change)="updateColumn(column, 'headerAlignment', $event)"
+                    >
+                      <option value="left">H:Izq</option>
+                      <option value="center">H:Cent</option>
+                      <option value="right">H:Der</option>
+                    </select>
+                    <div style="display: flex; gap: 2px;">
+                      <button
+                        type="button"
+                        class="format-button"
+                        style="padding: 1px 5px; font-size: 10px;"
+                        [class.active]="column.headerBold !== undefined ? column.headerBold : (selected.style?.header?.bold !== false)"
+                        (click)="toggleColumnHeaderProp(column, 'headerBold')"
+                        title="Negrita en encabezado"
+                      >
+                        <strong>B</strong>
+                      </button>
+                      <button
+                        type="button"
+                        class="format-button"
+                        style="padding: 1px 5px; font-size: 10px;"
+                        [class.active]="column.headerItalic"
+                        (click)="toggleColumnHeaderProp(column, 'headerItalic')"
+                        title="Cursiva en encabezado"
+                      >
+                        <em>I</em>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               }
               <button class="format-button" type="button" (click)="addColumn()">

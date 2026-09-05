@@ -945,20 +945,50 @@ export class EditorPage {
 
   updateColumn(
     column: TableColumn,
-    property: 'title' | 'dataPath' | 'widthMm' | 'alignment',
-    event: Event,
+    property:
+      | 'title'
+      | 'dataPath'
+      | 'widthMm'
+      | 'alignment'
+      | 'headerBackground'
+      | 'headerColor'
+      | 'headerAlignment'
+      | 'headerBold'
+      | 'headerItalic'
+      | 'headerFontSizePt',
+    event: Event | any,
   ): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
 
-    const rawVal = (event.target as HTMLInputElement | HTMLSelectElement).value;
-    const value = property === 'widthMm' ? (rawVal ? Number(rawVal) : undefined) : rawVal;
+    let value: any;
+    if (event && event.target) {
+      const target = event.target as HTMLInputElement | HTMLSelectElement;
+      if (property === 'widthMm' || property === 'headerFontSizePt') {
+        value = target.value ? Number(target.value) : undefined;
+      } else if (property === 'headerBold' || property === 'headerItalic') {
+        value = (target as HTMLInputElement).checked;
+      } else {
+        value = target.value;
+      }
+    } else {
+      value = event;
+    }
+
     this.store.updateElement(selected.id, {
       columns: this.tableColumns(selected).map((item) =>
         item.id === column.id ? { ...item, [property]: value } : item,
       ),
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  toggleColumnHeaderProp(column: TableColumn, prop: 'headerBold' | 'headerItalic'): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    const current = column[prop] ?? (prop === 'headerBold' ? true : false);
+    this.updateColumn(column, prop, !current);
   }
 
   distributeColumnsEqually(): void {
