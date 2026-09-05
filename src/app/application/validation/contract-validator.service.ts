@@ -47,10 +47,18 @@ export class ContractValidatorService {
       errors,
     );
 
-    for (const pending of contract.validation?.pendingBindings ?? []) {
-      errors.push(`Binding pendiente: ${pending}`);
-    }
+    // Los bindings pendientes son advertencias en plantillas en desarrollo,
+    // no deben bloquear el uso ni la exportación del diseño incompleto.
     return errors;
+  }
+
+  warnings(contract: DesignContract): string[] {
+    const warnings: string[] = [];
+    for (const pending of contract.validation?.pendingBindings ?? []) {
+      const label = typeof pending === 'string' ? pending : (pending as { id?: string }).id ?? JSON.stringify(pending);
+      warnings.push(`Binding pendiente: ${label}`);
+    }
+    return warnings;
   }
 
   private validateComponents(

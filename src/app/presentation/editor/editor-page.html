@@ -43,6 +43,9 @@
         />
       </label>
       <button class="button ghost" type="button" (click)="exportJson()">Exportar JSON</button>
+      <button class="button ghost" type="button" [disabled]="isGeneratingPdf()" (click)="generatePdfPreview()">
+        {{ isGeneratingPdf() ? 'Generando...' : 'Descargar PDF' }}
+      </button>
       <button class="button primary" type="button" (click)="save()">Guardar</button>
     </div>
   </header>

@@ -111,6 +111,10 @@ export class EditorStore {
     return this.validator.validate(this.templateState());
   }
 
+  validationWarnings(): string[] {
+    return this.validator.warnings(this.templateState());
+  }
+
   rename(name: string): void {
     this.templateState.update((template) => ({
       ...template,
@@ -453,6 +457,20 @@ export class EditorStore {
     const formData = new FormData();
     formData.append('file', file);
     return this.http.post<{ id: string }>(`${environment.apiBaseUrl}/Images`, formData);
+  }
+
+  generatePreviewPdf(payload?: string, contentType?: string): Observable<Blob> {
+    const template = this.templateState();
+    const { updatedAt: _updatedAt, ...contract } = template;
+    const body = {
+      designJson: JSON.stringify(contract),
+      payload: payload || '{}',
+      contentType: contentType || 'application/json',
+    };
+
+    return this.http.post(`${environment.apiBaseUrl}/pdf/preview-direct`, body, {
+      responseType: 'blob',
+    });
   }
 
   private updateById(id: string, change: (element: DesignComponent) => DesignComponent): void {

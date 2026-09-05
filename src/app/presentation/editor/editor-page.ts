@@ -1108,11 +1108,13 @@ export class EditorPage {
     notifySuccess('Formato nuevo listo');
   }
 
+  readonly isGeneratingPdf = signal(false);
+
   exportJson(): void {
     const errors = this.store.validationErrors();
     if (errors.length) {
-      this.status.set(`No se puede exportar: ${errors[0]}`);
-      return;
+      // Advertencia en el estado pero permite exportar el borrador incompleto
+      this.status.set(`Exportando borrador con advertencias: ${errors[0]}`);
     }
 
     const template = this.store.template();
@@ -1128,6 +1130,37 @@ export class EditorPage {
     URL.revokeObjectURL(url);
     this.status.set(`Contrato JSON ${template.schemaVersion} exportado`);
     notifySuccess('JSON exportado', `${template.document.name || 'plantilla'}.json`);
+  }
+
+  generatePdfPreview(): void {
+    if (this.isGeneratingPdf()) return;
+
+    this.isGeneratingPdf.set(true);
+    this.status.set('Generando PDF desde el diseño actual...');
+
+    // Usar datos del runtime o XML si se han cargado previamente en el evaluador de bindings
+    const rawXml = this.bindings.currentXmlRaw?.();
+    const payload = rawXml || '{}';
+    const contentType = rawXml ? 'application/xml; charset=utf-8' : 'application/json';
+
+    this.store.generatePreviewPdf(payload, contentType).subscribe({
+      next: (pdfBlob) => {
+        this.isGeneratingPdf.set(false);
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${this.store.template().document.name || 'documento'}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+        this.status.set('PDF generado y descargado correctamente');
+        notifySuccess('PDF generado', 'La descarga comenzará automáticamente');
+      },
+      error: (err) => {
+        this.isGeneratingPdf.set(false);
+        const message = err?.error?.message || err?.message || 'Error al generar el PDF';
+        this.status.set(`Error generando PDF: ${message}`);
+      },
+    });
   }
 
   async remove(): Promise<void> {
