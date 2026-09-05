@@ -128,7 +128,14 @@ type LegacyTemplate = Partial<DesignContract> & {
   id?: string;
   name?: string;
   elements?: LegacyElement[];
-  pages?: Array<{ elements: LegacyElement[] }>;
+  /** Forma legada (`elements`) o forma actual (`page` + `components`). */
+  pages?: Array<{
+    id?: string;
+    name?: string;
+    elements?: LegacyElement[];
+    page?: PageDefinition;
+    components?: LegacyElement[];
+  }>;
   page?: Partial<PageDefinition> & {
     kind?: string;
     format?: string;

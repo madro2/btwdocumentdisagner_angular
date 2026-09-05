@@ -336,6 +336,14 @@ export interface DataSourceDefinition {
   encodingPolicy?: Record<string, unknown>;
 }
 
+/** Página individual de un diseño multipágina. */
+export interface DesignPageEntry {
+  id: string;
+  name?: string;
+  page: PageDefinition;
+  components: DesignComponent[];
+}
+
 export interface ContractValidation {
   status?: 'draft' | 'proposed' | 'validated' | 'rejected';
   pendingBindings?: Array<{
@@ -352,6 +360,12 @@ export interface DesignContract {
   document: DocumentMeta;
   dataSource?: DataSourceDefinition;
   page: PageDefinition;
+  /**
+   * Páginas del diseño (cada una con su propia orientación y componentes).
+   * `page`/`components` de la raíz siempre reflejan la primera página para
+   * mantener compatibilidad con consumidores del contrato de una sola página.
+   */
+  pages?: DesignPageEntry[];
   resources?: Array<Record<string, unknown>>;
   sharedStyles?: Record<string, unknown>;
   components: DesignComponent[];

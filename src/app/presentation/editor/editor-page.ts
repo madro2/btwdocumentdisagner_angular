@@ -48,6 +48,12 @@ const TYPE_ICONS: Record<ComponentType, string> = {
 
 type InteractionMode = 'move' | 'resize';
 type ListKind = 'bullet' | 'number';
+type PaletteTab = 'components' | 'dataSources';
+
+interface DataSourceFieldGroup {
+  name: string;
+  fields: DataSourceField[];
+}
 
 interface Interaction {
   id: string;
@@ -103,8 +109,11 @@ export class EditorPage {
   readonly alignmentGuides = signal<AlignmentGuide[]>([]);
   readonly openMenu = signal<'spacing' | null>(null);
   readonly lineSpacingOptions = [1, 1.15, 1.5, 2, 2.5, 3];
+  readonly activePaletteTab = signal<PaletteTab>('components');
   readonly dataSourceCollections = signal<DataSourceCollection[]>([]);
   readonly dataSourceQuery = signal('');
+  readonly dataSourceLoading = signal(false);
+  readonly dataSourceError = signal<string | null>(null);
   readonly filteredDataSourceCollections = computed(() => {
     const query = this.dataSourceQuery().trim().toLowerCase();
     if (!query) return this.dataSourceCollections();
@@ -121,10 +130,7 @@ export class EditorPage {
   });
 
   constructor() {
-    this.dataSourceCatalog.list().subscribe({
-      next: (collections) => this.dataSourceCollections.set(collections),
-      error: () => this.dataSourceCollections.set([]),
-    });
+    this.loadDataSourceCatalog();
     const id = this.route.snapshot.paramMap.get('id');
     const xmlId = this.route.snapshot.queryParamMap.get('xmlId');
 
@@ -143,6 +149,7 @@ export class EditorPage {
               }
 
               this.bindings.configure(this.store.template());
+              this.loadXmlFromErp(xmlId);
               this.status.set(
                 `Plantilla ${NATIONAL_INVOICE_TEMPLATE.name} v${NATIONAL_INVOICE_TEMPLATE.version} cargada`,
               );
@@ -165,34 +172,102 @@ export class EditorPage {
         this.store.setOrientation('landscape');
       }
       this.bindings.configure(this.store.template());
+      this.loadXmlFromErp(xmlId);
     } else {
       this.store.loadById(id).subscribe((loaded) => {
         if (loaded) {
           this.status.set('Formato cargado');
           this.bindings.configure(this.store.template());
+          this.loadXmlFromErp(xmlId);
         } else {
           this.router.navigate(['/']);
         }
       });
     }
+  }
 
-    if (xmlId) {
-      this.http.get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${xmlId}/XMLERP/WithPath`, { responseType: 'text' })
-        .subscribe({
-          next: (xml) => {
-            const error = this.bindings.loadXml(xml);
-            if (error) {
-              this.status.set(`Error cargando XML: ${error}`);
-            } else {
-              this.status.set(`XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`);
-            }
-          },
-          error: (err) => {
-            this.status.set('Error descargando XML desde el ERP');
-            console.error(err);
-          }
-        });
+  setPaletteTab(tab: PaletteTab): void {
+    this.activePaletteTab.set(tab);
+  }
+
+  addPage(): void {
+    this.store.addPage();
+    this.status.set(`Página ${this.store.pageCount()} agregada`);
+    notifySuccess(`Página ${this.store.pageCount()} agregada`);
+  }
+
+  selectPage(index: number): void {
+    this.store.setActivePage(index);
+    this.status.set(`Editando la página ${index + 1}`);
+  }
+
+  async removePage(index: number, event: Event): Promise<void> {
+    event.stopPropagation();
+
+    const confirmed = await confirmAction({
+      title: '¿Eliminar página?',
+      text: `La página ${index + 1} y todos sus componentes se eliminarán.`,
+      confirmText: 'Sí, eliminar',
+    });
+    if (!confirmed) return;
+
+    this.store.removePage(index);
+    this.status.set('Página eliminada');
+    notifySuccess('Página eliminada');
+  }
+
+  loadDataSourceCatalog(): void {
+    this.dataSourceLoading.set(true);
+    this.dataSourceError.set(null);
+    this.dataSourceCatalog.list().subscribe({
+      next: (collections) => {
+        this.dataSourceCollections.set(collections);
+        this.dataSourceLoading.set(false);
+      },
+      error: () => {
+        this.dataSourceCollections.set([]);
+        this.dataSourceLoading.set(false);
+        this.dataSourceError.set(
+          'No fue posible cargar las fuentes de datos. Verifica la conexión con el backend.',
+        );
+      },
+    });
+  }
+
+  dataSourceGroups(collection: DataSourceCollection): DataSourceFieldGroup[] {
+    const groups = new Map<string, DataSourceField[]>();
+    for (const field of collection.fields) {
+      const groupName = field.group?.trim() || 'Otros campos';
+      const fields = groups.get(groupName) ?? [];
+      fields.push(field);
+      groups.set(groupName, fields);
     }
+    return Array.from(groups, ([name, fields]) => ({ name, fields }));
+  }
+
+  private loadXmlFromErp(xmlId: string | null): void {
+    if (!xmlId) return;
+
+    const encodedXmlId = encodeURIComponent(xmlId);
+    this.http
+      .get(`${environment.apiBaseUrl}/Proxy/filesfe/FilesFE/${encodedXmlId}/XMLERP/WithPath`, {
+        responseType: 'text',
+      })
+      .subscribe({
+        next: (xml) => {
+          const error = this.bindings.loadXml(xml);
+          if (error) {
+            this.status.set(`Error cargando XML: ${error}`);
+          } else {
+            this.status.set(
+              `XML cargado del ERP · ${this.bindings.availablePaths().length} rutas disponibles`,
+            );
+          }
+        },
+        error: () => {
+          this.status.set('Error descargando XML desde el ERP');
+        },
+      });
   }
 
   formatOptions(): { id: PageSize; label: string }[] {
@@ -258,6 +333,110 @@ export class EditorPage {
   closeFloatingUi(): void {
     this.tablePickerOpen.set(false);
     this.openMenu.set(null);
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  handleKeyboard(event: KeyboardEvent): void {
+    if (isEditableTarget(event.target)) return;
+
+    const ctrl = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+
+    if (ctrl && key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      this.undo();
+      return;
+    }
+    if ((ctrl && key === 'y') || (ctrl && event.shiftKey && key === 'z')) {
+      event.preventDefault();
+      this.redo();
+      return;
+    }
+    if (ctrl && key === 'c') {
+      if (this.copySelected()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'x') {
+      if (this.cutSelected()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'v') {
+      if (this.pasteClipboard()) event.preventDefault();
+      return;
+    }
+    if (ctrl && key === 'd') {
+      event.preventDefault();
+      this.duplicateSelected();
+      return;
+    }
+    if (key === 'delete' || key === 'backspace') {
+      if (this.deleteSelectedDirect()) event.preventDefault();
+      return;
+    }
+    if (key === 'escape') {
+      this.store.select(null);
+      return;
+    }
+    if (key.startsWith('arrow')) {
+      if (this.nudgeSelected(key, event.shiftKey)) event.preventDefault();
+    }
+  }
+
+  undo(): void {
+    if (!this.store.undo()) return;
+    this.status.set('Acción deshecha');
+  }
+
+  redo(): void {
+    if (!this.store.redo()) return;
+    this.status.set('Acción rehecha');
+  }
+
+  copySelected(): boolean {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.store.copySelected()) return false;
+    this.status.set(`«${selected.name ?? selected.type}» copiado`);
+    return true;
+  }
+
+  cutSelected(): boolean {
+    const selected = this.store.selectedElement();
+    if (!selected || !this.store.cutSelected()) return false;
+    this.status.set(`«${selected.name ?? selected.type}» cortado`);
+    return true;
+  }
+
+  pasteClipboard(): boolean {
+    const pasted = this.store.paste();
+    if (!pasted) return false;
+    this.status.set(`«${pasted.name ?? pasted.type}» pegado`);
+    return true;
+  }
+
+  duplicateSelected(): void {
+    const duplicated = this.store.duplicateSelected();
+    if (!duplicated) return;
+    this.status.set(`«${duplicated.name ?? duplicated.type}» duplicado`);
+  }
+
+  private deleteSelectedDirect(): boolean {
+    if (!this.store.selectedElement()) return false;
+    this.store.removeSelected();
+    this.status.set('Componente eliminado · Ctrl+Z para deshacer');
+    return true;
+  }
+
+  private nudgeSelected(arrowKey: string, big: boolean): boolean {
+    const step = big ? 5 : 1;
+    const delta: Record<string, [number, number]> = {
+      arrowup: [0, -step],
+      arrowdown: [0, step],
+      arrowleft: [-step, 0],
+      arrowright: [step, 0],
+    };
+    const [dx, dy] = delta[arrowKey] ?? [0, 0];
+    if (!dx && !dy) return false;
+    return this.store.moveSelectedBy(dx, dy);
   }
 
   paragraphToolsEnabled(): boolean {
@@ -353,6 +532,23 @@ export class EditorPage {
     return element.columns ?? [];
   }
 
+  /**
+   * Ancho de columna como porcentaje del total declarado, igual que hace el
+   * backend: así la tabla siempre llena el componente sin cortarse.
+   */
+  columnWidthPercent(element: DesignComponent, column: TableColumn): number | null {
+    const columns = this.tableColumns(element);
+    const declared = columns.reduce((sum, item) => sum + Math.max(0, item.widthMm ?? 0), 0);
+    if (declared <= 0) return null;
+    return (Math.max(0, column.widthMm ?? 0) / declared) * 100;
+  }
+
+  linkPreview(element: DesignComponent): string {
+    const text = this.previewText(element);
+    const url = withSampleData(element.content?.url ?? '');
+    return text || url || 'Vínculo sin URL';
+  }
+
   /** Modo efectivo de la tabla según el contrato 2.1. */
   tableMode(element: DesignComponent): 'fixedRows' | 'record' | 'collection' {
     const mode = element.content?.mode;
@@ -372,10 +568,16 @@ export class EditorPage {
     if (this.tableMode(element) === 'fixedRows' && Array.isArray(content.rows)) {
       return content.rows.map((row) =>
         columns.map((column, index) => {
-          if (column.value) return withSampleData(column.value);
-          if (index === 0) return withSampleData(row.label);
-          if (row.value) return withSampleData(row.value);
-          return row.dataPath ? withSampleData(`{{${row.dataPath}}}`) : '';
+          if (column.value) {
+            return this.previewBindingValue(column.value, column.defaultValue ?? '');
+          }
+          if (index === 0) return this.previewBindingValue(row.label);
+          if (row.value) {
+            return this.previewBindingValue(row.value, row.defaultValue ?? '');
+          }
+          return row.dataPath
+            ? this.previewBindingValue(`{{${row.dataPath}}}`, row.defaultValue ?? '')
+            : (row.defaultValue ?? '');
         }),
       );
     }
@@ -385,8 +587,12 @@ export class EditorPage {
       return [
         columns.map((column) => {
           const field = fields.find((item) => item.column === column.id);
-          if (field?.value) return withSampleData(field.value);
-          return field?.dataPath ? withSampleData(`{{${field.dataPath}}}`) : '—';
+          if (field?.value) {
+            return this.previewBindingValue(field.value, field.defaultValue ?? '');
+          }
+          return field?.dataPath
+            ? this.previewBindingValue(`{{${field.dataPath}}}`, field.defaultValue ?? '')
+            : '—';
         }),
       ];
     }
@@ -424,6 +630,16 @@ export class EditorPage {
     );
   }
 
+  /**
+   * Usa el XML real cuando el usuario ya lo cargó. Los valores de ejemplo se
+   * conservan únicamente para que una plantilla nueva no aparezca vacía.
+   */
+  private previewBindingValue(template: string | undefined, defaultValue = ''): string {
+    const resolved = this.bindings.render(template, {}, {}, defaultValue);
+    if (resolved || this.bindings.hasLoadedXml()) return resolved;
+    return withSampleData(template) || defaultValue;
+  }
+
   previewImageSource(element: DesignComponent): string | null {
     const path = element.content?.dataPath;
     const value = path ? this.bindings.resolve(path) : null;
@@ -443,11 +659,18 @@ export class EditorPage {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const error = this.store.importContract(JSON.parse(String(reader.result)));
+        const parsed = JSON.parse(String(reader.result)) as Record<string, unknown>;
+        const error = this.store.importContract(parsed);
         if (error) {
           this.status.set(error);
           return;
         }
+
+        const system = parsed['System'] || parsed['system'] || parsed['runtime'];
+        if (system && typeof system === 'object' && !Array.isArray(system)) {
+          this.bindings.setSystem(system as Record<string, unknown>);
+        }
+
         this.bindings.configure(this.store.template());
         this.status.set(`Contrato ${this.store.template().schemaVersion} importado`);
       } catch (error) {
@@ -476,7 +699,7 @@ export class EditorPage {
     reader.readAsText(file, 'utf-8');
   }
 
-  importRuntime(event: Event): void {
+  importSystem(event: Event): void {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
@@ -486,20 +709,20 @@ export class EditorPage {
       try {
         const parsed = JSON.parse(String(reader.result)) as unknown;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          this.status.set('El runtime debe ser un objeto JSON.');
+          this.status.set('El JSON del sistema debe ser un objeto.');
           return;
         }
         const envelope = parsed as Record<string, unknown>;
-        const runtime =
-          envelope['runtime'] &&
-          typeof envelope['runtime'] === 'object' &&
-          !Array.isArray(envelope['runtime'])
-            ? (envelope['runtime'] as Record<string, unknown>)
+        const system =
+          (envelope['System'] || envelope['system'] || envelope['runtime']) &&
+          typeof (envelope['System'] || envelope['system'] || envelope['runtime']) === 'object' &&
+          !Array.isArray(envelope['System'] || envelope['system'] || envelope['runtime'])
+            ? ((envelope['System'] || envelope['system'] || envelope['runtime']) as Record<string, unknown>)
             : envelope;
-        this.bindings.setRuntime(runtime);
-        this.status.set(`Runtime cargado · ${Object.keys(runtime).length} parámetros`);
+        this.bindings.setSystem(system);
+        this.status.set(`Datos de sistema cargados · ${Object.keys(system).length} parámetros`);
       } catch (error) {
-        this.status.set(`Runtime JSON inválido: ${(error as Error).message}`);
+        this.status.set(`JSON de sistema inválido: ${(error as Error).message}`);
       } finally {
         input.value = '';
       }
@@ -567,15 +790,22 @@ export class EditorPage {
     }
   }
 
-  startDataSourceFieldDrag(event: DragEvent, field: DataSourceField): void {
-    event.dataTransfer?.setData('application/x-data-source-field', JSON.stringify(field));
+  startDataSourceFieldDrag(
+    event: DragEvent,
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): void {
+    event.dataTransfer?.setData(
+      'application/x-data-source-field',
+      JSON.stringify(this.withCollection(field, collection)),
+    );
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copy';
     }
   }
 
-  addDataSourceField(field: DataSourceField): void {
-    this.store.addDataSourceField(field);
+  addDataSourceField(field: DataSourceField, collection: DataSourceCollection): void {
+    this.store.addDataSourceField(this.withCollection(field, collection));
     this.status.set(`Campo "${field.displayName}" enlazado a ${field.path}`);
   }
 
@@ -677,6 +907,30 @@ export class EditorPage {
     this.status.set(`Componente agregado dentro de ${container.name ?? 'contenedor'}`);
   }
 
+  allowDataSourceBindingDrop(event: DragEvent): void {
+    if (!event.dataTransfer?.types.includes('application/x-data-source-field')) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+  }
+
+  dropDataSourceOnElement(event: DragEvent, element: DesignComponent): void {
+    const field = this.readDataSourceField(event);
+    if (!field) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (this.store.bindDataSourceField(element.id, field)) {
+      this.status.set(`Componente "${element.name ?? element.type}" enlazado a ${field.path}`);
+      return;
+    }
+
+    this.status.set(`El componente ${element.type} no admite un campo escalar.`);
+  }
+
   private hasPaletteData(event: DragEvent): boolean {
     const types = event.dataTransfer?.types;
     return Boolean(
@@ -694,6 +948,17 @@ export class EditorPage {
     } catch {
       return null;
     }
+  }
+
+  private withCollection(
+    field: DataSourceField,
+    collection: DataSourceCollection,
+  ): DataSourceField {
+    return {
+      ...field,
+      collectionId: collection.id,
+      collectionName: collection.name,
+    };
   }
 
   select(event: PointerEvent, element: DesignComponent): void {
@@ -857,16 +1122,38 @@ export class EditorPage {
       }
     }
 
-    this.store.updatePosition(interaction.id, { width, height });
+    this.store.resizeElement(interaction.id, { width, height });
   }
 
   updateNumber(property: 'x' | 'y' | 'width' | 'height', event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
-    this.store.updatePosition(selected.id, {
-      [property]: Number((event.target as HTMLInputElement).value),
+    const value = Number((event.target as HTMLInputElement).value);
+    if (property === 'width' || property === 'height') {
+      this.store.resizeElement(selected.id, { [property]: value });
+    } else {
+      this.store.updatePosition(selected.id, { [property]: value });
+    }
+    this.status.set('Cambios sin guardar');
+  }
+
+  updateRotation(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const degrees = Number((event.target as HTMLSelectElement).value) || 0;
+    this.store.updateElement(selected.id, {
+      rotationDegrees: degrees === 0 ? undefined : degrees,
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  isRotated(element: DesignComponent): boolean {
+    return (element.rotationDegrees ?? 0) !== 0;
+  }
+
+  rotationTransform(element: DesignComponent): string | null {
+    if (!this.isRotated(element)) return null;
+    return `rotate(${element.rotationDegrees}deg)`;
   }
 
   updateText(event: Event): void {
@@ -1264,16 +1551,28 @@ export class EditorPage {
 
   readonly isGeneratingPdf = signal(false);
 
-  exportJson(): void {
+  async exportJson(): Promise<void> {
     const errors = this.store.validationErrors();
     if (errors.length) {
-      // Advertencia en el estado pero permite exportar el borrador incompleto
-      this.status.set(`Exportando borrador con advertencias: ${errors[0]}`);
+      const confirmed = await confirmAction({
+        title: 'El formato tiene advertencias',
+        text: `Advertencia detectada: ${errors[0]}.\n¿Deseas exportarlo de todos modos?`,
+        confirmText: 'Sí, exportar',
+      });
+      if (!confirmed) {
+        this.status.set('Exportación cancelada.');
+        return;
+      }
     }
 
-    const template = this.store.template();
+    const template = this.store.exportContract();
     const { updatedAt: _updatedAt, ...contract } = template;
-    const blob = new Blob([JSON.stringify(contract, null, 2)], {
+    const system = this.bindings.getSystem();
+    const exportData = Object.keys(system).length > 0 
+      ? { ...contract, System: system }
+      : contract;
+      
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',
     });
     const url = URL.createObjectURL(blob);
@@ -1336,6 +1635,14 @@ export class EditorPage {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Evita capturar atajos mientras se escribe en campos de texto. */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 }
 
 function stripListPrefix(line: string): string {

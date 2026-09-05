@@ -11,6 +11,7 @@ import {
   createPage,
   DesignComponent,
   DesignContract,
+  DesignPageEntry,
   DocumentKind,
   documentKindOf,
   PageDefinition,
@@ -20,7 +21,18 @@ import {
 } from '../../domain/models/template.model';
 import { TEMPLATE_REPOSITORY } from '../tokens/template-repository.token';
 import { ContractValidatorService } from '../validation/contract-validator.service';
+import { DataSourceFieldBinding, withDataSourceBinding } from './data-source-binding';
 import { calculateVersionSaveInfo, VersionSaveInfo } from './versioning';
+
+interface HistorySnapshot {
+  template: DesignContract;
+  pages: DesignPageEntry[];
+  activePageIndex: number;
+}
+
+/** Ventana para agrupar mutaciones repetidas (arrastres, tecleo) en un solo paso. */
+const HISTORY_COALESCE_MS = 800;
+const HISTORY_LIMIT = 100;
 
 @Injectable({ providedIn: 'root' })
 export class EditorStore {
@@ -29,9 +41,34 @@ export class EditorStore {
   private readonly http = inject(HttpClient);
   private readonly templateState = signal<DesignContract>(this.emptyTemplate());
   private readonly selectedIdState = signal<string | null>(null);
+  private readonly pagesState = signal<DesignPageEntry[]>(
+    normalizePages(this.templateState()),
+  );
+  private readonly activePageIndexState = signal(0);
+
+  private history: HistorySnapshot[] = [];
+  private future: HistorySnapshot[] = [];
+  private lastHistoryLabel: string | null = null;
+  private lastHistoryAt = 0;
+  private clipboard: DesignComponent | null = null;
+
+  readonly canUndo = signal(false);
+  readonly canRedo = signal(false);
 
   readonly template = this.templateState.asReadonly();
   readonly selectedId = this.selectedIdState.asReadonly();
+  readonly activePageIndex = this.activePageIndexState.asReadonly();
+  /** Páginas del diseño; la activa refleja el estado en edición. */
+  readonly pages = computed(() => {
+    const activeIndex = this.activePageIndexState();
+    const current = this.templateState();
+    return this.pagesState().map((entry, index) =>
+      index === activeIndex
+        ? { ...entry, page: current.page, components: current.components }
+        : entry,
+    );
+  });
+  readonly pageCount = computed(() => this.pagesState().length);
   readonly selectedElement = computed(() => {
     const id = this.selectedIdState();
     return id ? findElement(this.templateState().components, id) : null;
@@ -51,12 +88,11 @@ export class EditorStore {
   });
 
   createNew(): void {
-    this.templateState.set(this.emptyTemplate());
-    this.selectedIdState.set(null);
+    this.applyContract(this.emptyTemplate());
   }
 
   startFromTemplate(template: DesignContract): void {
-    this.templateState.set({
+    this.applyContract({
       ...template,
       document: {
         ...template.document,
@@ -64,7 +100,6 @@ export class EditorStore {
       },
       updatedAt: new Date().toISOString(),
     });
-    this.selectedIdState.set(null);
   }
 
   startFromSavedTemplate(name: string, version: number): Observable<boolean> {
@@ -102,13 +137,195 @@ export class EditorStore {
       return `Contrato inválido: ${errors.slice(0, 3).join(' ')}`;
     }
 
-    this.templateState.set(contract as DesignContract);
-    this.selectedIdState.set(null);
+    this.applyContract(contract as DesignContract);
     return null;
   }
 
   validationErrors(): string[] {
-    return this.validator.validate(this.templateState());
+    const contract = this.composeContract();
+    const errors = this.validator.validate(contract);
+    const seen = new Set(errors);
+    (contract.pages ?? []).forEach((entry, index) => {
+      if (index === 0) return;
+      const pageErrors = this.validator.validate({
+        ...contract,
+        page: entry.page,
+        components: entry.components,
+      });
+      for (const error of pageErrors) {
+        if (seen.has(error)) continue;
+        seen.add(error);
+        errors.push(`Página ${index + 1}: ${error}`);
+      }
+    });
+    return errors;
+  }
+
+  /** Contrato completo con todas las páginas sincronizadas. */
+  exportContract(): DesignContract {
+    return this.composeContract();
+  }
+
+  addPage(): void {
+    this.pushHistory();
+    this.commitActivePage();
+    const current = this.templateState().page;
+    const entry: DesignPageEntry = {
+      id: crypto.randomUUID(),
+      page: { ...current, marginsMm: { ...current.marginsMm } },
+      components: [],
+    };
+    this.pagesState.update((pages) => [...pages, entry]);
+    this.setActivePage(this.pagesState().length - 1);
+  }
+
+  setActivePage(index: number): void {
+    const pages = this.pagesState();
+    if (index < 0 || index >= pages.length || index === this.activePageIndexState()) {
+      return;
+    }
+
+    this.commitActivePage();
+    const entry = this.pagesState()[index];
+    this.activePageIndexState.set(index);
+    this.templateState.update((template) => ({
+      ...template,
+      page: entry.page,
+      components: entry.components,
+    }));
+    this.selectedIdState.set(null);
+  }
+
+  removePage(index: number): void {
+    const pages = this.pagesState();
+    if (pages.length <= 1 || index < 0 || index >= pages.length) return;
+
+    this.pushHistory();
+    this.commitActivePage();
+    const remaining = this.pagesState().filter((_, i) => i !== index);
+    this.pagesState.set(remaining);
+
+    const active = this.activePageIndexState();
+    const nextIndex = Math.min(active > index ? active - 1 : active, remaining.length - 1);
+    const entry = remaining[nextIndex];
+    this.activePageIndexState.set(nextIndex);
+    this.templateState.update((template) => ({
+      ...template,
+      page: entry.page,
+      components: entry.components,
+    }));
+    this.selectedIdState.set(null);
+  }
+
+  /** Copia la página activa (hoja y componentes) dentro de la lista de páginas. */
+  private commitActivePage(): void {
+    const current = this.templateState();
+    const activeIndex = this.activePageIndexState();
+    this.pagesState.update((pages) =>
+      pages.map((entry, index) =>
+        index === activeIndex
+          ? { ...entry, page: current.page, components: current.components }
+          : entry,
+      ),
+    );
+  }
+
+  /** Contrato con `pages` al día y la raíz apuntando a la primera página. */
+  private composeContract(): DesignContract {
+    this.commitActivePage();
+    const pages = this.pagesState();
+    const cleanPages = pages.map((entry) => ({
+      ...entry,
+      components: this.stripPreviewSrc(entry.components),
+    }));
+
+    return {
+      ...this.templateState(),
+      page: cleanPages[0].page,
+      components: cleanPages[0].components,
+      pages: cleanPages,
+    };
+  }
+
+  /** Elimina el previewSrc (Base64) de las imágenes para que el JSON exportado sea ligero. */
+  private stripPreviewSrc(components: DesignComponent[] | undefined): DesignComponent[] {
+    if (!components) return [];
+    return components.map((component) => {
+      const copy = { ...component };
+      if (copy.content && 'previewSrc' in copy.content) {
+        copy.content = { ...copy.content };
+        delete copy.content.previewSrc;
+      }
+      if (copy.components?.length) {
+        copy.components = this.stripPreviewSrc(copy.components);
+      }
+      return copy;
+    });
+  }
+
+  /** Carga un contrato, inicializando las páginas y activando la primera. */
+  private applyContract(contract: DesignContract): void {
+    const pages = normalizePages(contract);
+    this.pagesState.set(pages);
+    this.activePageIndexState.set(0);
+    this.templateState.set({
+      ...contract,
+      page: pages[0].page,
+      components: pages[0].components,
+    });
+    this.selectedIdState.set(null);
+    this.clearHistory();
+  }
+
+  private currentSnapshot(): HistorySnapshot {
+    return {
+      template: this.templateState(),
+      pages: this.pagesState(),
+      activePageIndex: this.activePageIndexState(),
+    };
+  }
+
+  private restoreSnapshot(snapshot: HistorySnapshot): void {
+    this.pagesState.set(snapshot.pages);
+    this.activePageIndexState.set(
+      clamp(snapshot.activePageIndex, 0, snapshot.pages.length - 1),
+    );
+    this.templateState.set(snapshot.template);
+    this.selectedIdState.set(null);
+  }
+
+  /**
+   * Guarda el estado previo a una mutación. Con `label`, las repeticiones
+   * rápidas de la misma operación (arrastre, tecleo) comparten un solo paso.
+   */
+  private pushHistory(label?: string): void {
+    const now = Date.now();
+    if (
+      label &&
+      label === this.lastHistoryLabel &&
+      now - this.lastHistoryAt < HISTORY_COALESCE_MS
+    ) {
+      this.lastHistoryAt = now;
+      this.future = [];
+      this.canRedo.set(false);
+      return;
+    }
+
+    this.history.push(this.currentSnapshot());
+    if (this.history.length > HISTORY_LIMIT) this.history.shift();
+    this.future = [];
+    this.lastHistoryLabel = label ?? null;
+    this.lastHistoryAt = now;
+    this.canUndo.set(true);
+    this.canRedo.set(false);
+  }
+
+  private clearHistory(): void {
+    this.history = [];
+    this.future = [];
+    this.lastHistoryLabel = null;
+    this.canUndo.set(false);
+    this.canRedo.set(false);
   }
 
   validationWarnings(): string[] {
@@ -116,6 +333,7 @@ export class EditorStore {
   }
 
   rename(name: string): void {
+    this.pushHistory('rename');
     this.templateState.update((template) => ({
       ...template,
       document: { ...template.document, name },
@@ -129,6 +347,7 @@ export class EditorStore {
 
   setPageFormat(size: PageSize): void {
     const current = this.templateState().page;
+    this.pushHistory();
     this.updatePage(createPage(size, current.orientation, current.background));
   }
 
@@ -137,20 +356,105 @@ export class EditorStore {
     if (documentKindOf(page) === 'pos' || page.orientation === orientation) {
       return;
     }
+    this.pushHistory();
     this.updatePage(createPage(page.size, orientation, page.background));
   }
 
   setPageHeight(heightMm: number): void {
     const page = this.templateState().page;
     if (documentKindOf(page) !== 'pos' || !Number.isFinite(heightMm)) return;
+    this.pushHistory('page-height');
     this.updatePage({ ...page, heightMm: clamp(heightMm, 30, 3000) });
   }
 
   setPageBackground(background: string): void {
+    this.pushHistory('page-background');
     this.templateState.update((template) => ({
       ...template,
       page: { ...template.page, background },
     }));
+  }
+
+  undo(): boolean {
+    const snapshot = this.history.pop();
+    if (!snapshot) return false;
+
+    this.future.push(this.currentSnapshot());
+    this.restoreSnapshot(snapshot);
+    this.canUndo.set(this.history.length > 0);
+    this.canRedo.set(true);
+    this.lastHistoryLabel = null;
+    return true;
+  }
+
+  redo(): boolean {
+    const snapshot = this.future.pop();
+    if (!snapshot) return false;
+
+    this.history.push(this.currentSnapshot());
+    this.restoreSnapshot(snapshot);
+    this.canUndo.set(true);
+    this.canRedo.set(this.future.length > 0);
+    this.lastHistoryLabel = null;
+    return true;
+  }
+
+  copySelected(): boolean {
+    const selected = this.selectedElement();
+    if (!selected) return false;
+    this.clipboard = structuredClone(selected);
+    return true;
+  }
+
+  cutSelected(): boolean {
+    if (!this.copySelected()) return false;
+    this.removeSelected();
+    return true;
+  }
+
+  hasClipboard(): boolean {
+    return this.clipboard !== null;
+  }
+
+  /** Pega el portapapeles en la hoja activa, con ids nuevos y leve desfase. */
+  paste(): DesignComponent | null {
+    if (!this.clipboard) return null;
+
+    const clone = cloneWithNewIds(structuredClone(this.clipboard));
+    const page = this.templateState().page;
+    clone.position = {
+      ...clone.position,
+      x: clamp(clone.position.x + 5, 0, Math.max(0, page.widthMm - clone.position.width)),
+      y: clamp(clone.position.y + 5, 0, Math.max(0, page.heightMm - clone.position.height)),
+    };
+    this.insertElement(clone, undefined, null);
+    return clone;
+  }
+
+  duplicateSelected(): DesignComponent | null {
+    if (!this.copySelected()) return null;
+    return this.paste();
+  }
+
+  /** Desplaza el elemento seleccionado dentro de los límites de su padre. */
+  moveSelectedBy(deltaX: number, deltaY: number): boolean {
+    const selected = this.selectedElement();
+    if (!selected) return false;
+
+    const bounds = this.getElementBounds(selected.id);
+    this.updatePosition(selected.id, {
+      x: clamp(
+        selected.position.x + deltaX,
+        0,
+        Math.max(0, bounds.width - selected.position.width),
+      ),
+      y: clamp(
+        selected.position.y + deltaY,
+        0,
+        Math.max(0, bounds.height - selected.position.height),
+      ),
+    });
+    return true;
   }
 
   addElement(
@@ -172,12 +476,7 @@ export class EditorStore {
   }
 
   addDataSourceField(
-    field: {
-      name: string;
-      displayName: string;
-      description: string;
-      path: string;
-    },
+    field: DataSourceFieldBinding,
     position?: { x: number; y: number },
     parentId: string | null = null,
   ): void {
@@ -192,6 +491,9 @@ export class EditorStore {
     };
     element.properties = {
       ...(element.properties ?? {}),
+      dataSourceFieldId: field.id,
+      dataSourceCollectionId: field.collectionId,
+      dataSourceCollectionName: field.collectionName,
       dataSourceFieldName: field.name,
       dataSourceFieldDescription: field.description,
       dataSourcePath: field.path,
@@ -199,11 +501,25 @@ export class EditorStore {
     this.insertElement(element, position, parentId);
   }
 
+  bindDataSourceField(id: string, field: DataSourceFieldBinding): boolean {
+    const element = findElement(this.templateState().components, id);
+    if (!element) return false;
+
+    const boundElement = withDataSourceBinding(element, field);
+    if (!boundElement) return false;
+
+    this.pushHistory();
+    this.updateById(id, () => boundElement);
+    this.selectedIdState.set(id);
+    return true;
+  }
+
   private insertElement(
     element: DesignComponent,
     position: { x: number; y: number } | undefined,
     parentId: string | null,
   ): void {
+    this.pushHistory();
     const bounds = this.getParentBounds(parentId);
     element.position.width = Math.min(element.position.width, bounds.width);
     element.position.height = Math.min(element.position.height, bounds.height);
@@ -247,6 +563,7 @@ export class EditorStore {
   }
 
   updateElement(id: string, patch: Partial<DesignComponent>): void {
+    this.pushHistory(`element:${id}`);
     this.updateById(id, (element) => ({ ...element, ...patch }));
   }
 
@@ -254,13 +571,38 @@ export class EditorStore {
     id: string,
     patch: Partial<{ x: number; y: number; width: number; height: number }>,
   ): void {
+    this.pushHistory(`position:${id}`);
     this.updateById(id, (element) => ({
       ...element,
       position: { ...element.position, ...patch, unit: 'mm' },
     }));
   }
 
+  /**
+   * Cambia el tamaño de un elemento. Si es un contenedor, sus hijos se escalan
+   * proporcionalmente para que sigan ocupando la misma zona relativa.
+   */
+  resizeElement(id: string, patch: Partial<{ width: number; height: number }>): void {
+    this.pushHistory(`resize:${id}`);
+    this.updateById(id, (element) => {
+      const width = patch.width ?? element.position.width;
+      const height = patch.height ?? element.position.height;
+      const scaleX = element.position.width > 0 ? width / element.position.width : 1;
+      const scaleY = element.position.height > 0 ? height / element.position.height : 1;
+
+      return {
+        ...element,
+        position: { ...element.position, width, height, unit: 'mm' },
+        components:
+          element.type === 'container' && element.components?.length
+            ? scaleElements(element.components, scaleX, scaleY)
+            : element.components,
+      };
+    });
+  }
+
   updateStyle(id: string, patch: Partial<ComponentStyle>): void {
+    this.pushHistory(`style:${id}`);
     this.updateById(id, (element) => ({
       ...element,
       style: { ...element.style, ...patch },
@@ -268,6 +610,7 @@ export class EditorStore {
   }
 
   updateContent(id: string, patch: Partial<ComponentContent>): void {
+    this.pushHistory(`content:${id}`);
     this.updateById(id, (element) => ({
       ...element,
       content: { ...element.content, ...patch },
@@ -275,6 +618,7 @@ export class EditorStore {
   }
 
   updateRepeatOn(id: string, repeatOn: RepeatOn): void {
+    this.pushHistory(`repeat:${id}`);
     this.updateById(id, (element) => ({
       ...element,
       behavior: {
@@ -325,6 +669,7 @@ export class EditorStore {
     ).filter((item) => item.id !== id);
     movedElement.position = findFreePosition(movedElement.position, targetSiblings, bounds);
 
+    this.pushHistory();
     this.templateState.update((template) => {
       const withoutElement = removeElement(template.components, id);
       if (!parentId) {
@@ -385,6 +730,7 @@ export class EditorStore {
     const id = this.selectedIdState();
     if (!id) return;
 
+    this.pushHistory();
     this.templateState.update((template) => ({
       ...template,
       components: removeElement(template.components, id),
@@ -402,11 +748,9 @@ export class EditorStore {
   }
 
   save(): Observable<void> {
-    this.templateState.update((template) => ({
-      ...template,
-      updatedAt: new Date().toISOString(),
-    }));
-    return this.repository.save(this.templateState());
+    const updatedAt = new Date().toISOString();
+    this.templateState.update((template) => ({ ...template, updatedAt }));
+    return this.repository.save({ ...this.composeContract(), updatedAt });
   }
 
   versionSaveInfo(): Observable<VersionSaveInfo> {
@@ -419,7 +763,7 @@ export class EditorStore {
   saveAsNewVersion(version: number): Observable<DesignContract> {
     const now = new Date().toISOString();
     const versionedTemplate: DesignContract = {
-      ...this.templateState(),
+      ...this.composeContract(),
       document: {
         ...this.templateState().document,
         id: crypto.randomUUID(),
@@ -430,8 +774,7 @@ export class EditorStore {
 
     return this.repository.save(versionedTemplate).pipe(
       tap(() => {
-        this.templateState.set(versionedTemplate);
-        this.selectedIdState.set(null);
+        this.applyContract(versionedTemplate);
       }),
       map(() => versionedTemplate),
     );
@@ -441,8 +784,7 @@ export class EditorStore {
     return this.repository.load(id).pipe(
       map((template) => {
         if (!template) return false;
-        this.templateState.set(template);
-        this.selectedIdState.set(null);
+        this.applyContract(template);
         return true;
       }),
     );
@@ -529,6 +871,35 @@ export class EditorStore {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Clona un componente asignando ids nuevos a él y a todos sus hijos. */
+function cloneWithNewIds(element: DesignComponent): DesignComponent {
+  return {
+    ...element,
+    id: crypto.randomUUID(),
+    components: element.components?.map(cloneWithNewIds),
+  };
+}
+
+/** Convierte un contrato (con o sin `pages`) en la lista de páginas del editor. */
+function normalizePages(contract: DesignContract): DesignPageEntry[] {
+  if (contract.pages?.length) {
+    return contract.pages.map((entry) => ({
+      id: entry.id || crypto.randomUUID(),
+      name: entry.name,
+      page: entry.page,
+      components: entry.components ?? [],
+    }));
+  }
+
+  return [
+    {
+      id: crypto.randomUUID(),
+      page: contract.page,
+      components: contract.components ?? [],
+    },
+  ];
 }
 
 /** Margen de tolerancia: los bordes pueden tocarse, pero no solaparse. */
@@ -647,6 +1018,28 @@ function collectIds(elements: DesignComponent[]): string[] {
 
 function containsId(elements: DesignComponent[], id: string): boolean {
   return elements.some((element) => element.id === id || containsId(element.components ?? [], id));
+}
+
+function scaleElements(
+  elements: DesignComponent[],
+  scaleX: number,
+  scaleY: number,
+): DesignComponent[] {
+  if (scaleX === 1 && scaleY === 1) return elements;
+  const round = (value: number) => Math.round(value * 100) / 100;
+  return elements.map((element) => ({
+    ...element,
+    position: {
+      ...element.position,
+      x: round(element.position.x * scaleX),
+      y: round(element.position.y * scaleY),
+      width: round(element.position.width * scaleX),
+      height: round(element.position.height * scaleY),
+    },
+    components: element.components?.length
+      ? scaleElements(element.components, scaleX, scaleY)
+      : element.components,
+  }));
 }
 
 function mapElements(

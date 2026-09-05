@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import {
   BindingDefinition,
   DesignContract,
@@ -10,17 +10,22 @@ import {
 
 @Injectable({ providedIn: 'root' })
 export class BindingEvaluatorService {
-  private readonly xml = inject(XmlDataSourceService);
   private readonly contractState = signal<DesignContract | null>(null);
-  private readonly runtimeState = signal<Record<string, unknown>>({});
+  private readonly systemState = signal<Record<string, unknown>>({});
+
+  constructor(private readonly xml: XmlDataSourceService) {}
 
   configure(contract: DesignContract): void {
     this.contractState.set(contract);
     this.xml.configure(contract.dataSource);
   }
 
-  setRuntime(runtime: Record<string, unknown>): void {
-    this.runtimeState.set(runtime);
+  setSystem(system: Record<string, unknown>): void {
+    this.systemState.set(system);
+  }
+
+  getSystem(): Record<string, unknown> {
+    return this.systemState();
   }
 
   loadXml(xml: string): string | null {
@@ -33,6 +38,10 @@ export class BindingEvaluatorService {
 
   availablePaths(): string[] {
     return this.xml.paths();
+  }
+
+  hasLoadedXml(): boolean {
+    return this.xml.document() !== null;
   }
 
   collection(path: string): Element[] {
@@ -55,7 +64,8 @@ export class BindingEvaluatorService {
 
   resolve(path: string, scope: XmlBindingScope = {}): unknown {
     const [root, ...rest] = path.split('.');
-    if (root === 'Runtime') return this.runtimeState()[rest.join('.')] ?? null;
+    if (root === 'System') return this.systemState()[rest.join('.')] ?? null;
+    if (root === 'Runtime') return this.systemState()[rest.join('.')] ?? null; // fallback compatibility
     if (root === 'Computed') return this.computed(rest.join('.'), scope);
     if (root === 'Pagina') return root === path ? null : '1';
     return this.xml.resolve(path, scope);

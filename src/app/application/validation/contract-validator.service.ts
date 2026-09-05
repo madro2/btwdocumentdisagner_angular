@@ -55,8 +55,8 @@ export class ContractValidatorService {
   warnings(contract: DesignContract): string[] {
     const warnings: string[] = [];
     for (const pending of contract.validation?.pendingBindings ?? []) {
-      const label = typeof pending === 'string' ? pending : (pending as { id?: string }).id ?? JSON.stringify(pending);
-      warnings.push(`Binding pendiente: ${label}`);
+      const bindingId = typeof pending === 'object' && pending !== null ? (pending as any).id || JSON.stringify(pending) : pending;
+      warnings.push(`Campo dinámico sin configurar (Binding pendiente): ${bindingId}`);
     }
     return warnings;
   }

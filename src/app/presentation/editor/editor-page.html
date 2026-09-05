@@ -18,6 +18,26 @@
     />
 
     <div class="toolbar-actions">
+      <button
+        class="button ghost icon-button"
+        type="button"
+        title="Deshacer (Ctrl+Z)"
+        aria-label="Deshacer"
+        [disabled]="!store.canUndo()"
+        (click)="undo()"
+      >
+        ↶
+      </button>
+      <button
+        class="button ghost icon-button"
+        type="button"
+        title="Rehacer (Ctrl+Y)"
+        aria-label="Rehacer"
+        [disabled]="!store.canRedo()"
+        (click)="redo()"
+      >
+        ↷
+      </button>
       <a class="button ghost" routerLink="/">Mis formatos</a>
       <button class="button ghost" type="button" (click)="createNew()">Nueva</button>
       <label class="button ghost">
@@ -34,12 +54,12 @@
         />
       </label>
       <label class="button ghost">
-        Cargar runtime
+        Cargar datos del sistema
         <input
           hidden
           type="file"
           accept="application/json,.json"
-          (change)="importRuntime($event)"
+          (change)="importSystem($event)"
         />
       </label>
       <button class="button ghost" type="button" (click)="exportJson()">Exportar JSON</button>
@@ -130,203 +150,267 @@
 
   <main class="workspace">
     <aside class="palette panel">
-      <div class="panel-heading">
-        <span>Componentes</span>
-        <small>Arrastra o haz clic para agregar</small>
-      </div>
-
-      <button
-        class="palette-item"
-        type="button"
-        draggable="true"
-        (dragstart)="startPaletteDrag($event, 'text')"
-        (click)="add('text')"
-      >
-        <span class="item-icon text-icon" aria-hidden="true">T</span>
-        <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
-      </button>
-
-      @for (
-        type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak'];
-        track type
-      ) {
+      <nav class="palette-tabs" aria-label="Herramientas del editor">
         <button
-          class="palette-item compact"
           type="button"
-          draggable="true"
-          (dragstart)="startPaletteDrag($event, $any(type))"
-          (click)="add($any(type))"
+          [class.active]="activePaletteTab() === 'components'"
+          (click)="setPaletteTab('components')"
         >
-          <span class="item-icon">{{ iconFor($any(type)) }}</span>
-          <span
-            ><strong>{{ type }}</strong
-            ><small>Contrato 3.0</small></span
-          >
+          Componentes
         </button>
-      }
+        <button
+          type="button"
+          [class.active]="activePaletteTab() === 'dataSources'"
+          (click)="setPaletteTab('dataSources')"
+        >
+          Fuentes de datos
+          @if (dataSourceCollections().length) {
+            <span>{{ dataSourceCollections().length }}</span>
+          }
+        </button>
+      </nav>
 
-      <button
-        class="palette-item"
-        type="button"
-        draggable="true"
-        (dragstart)="startPaletteDrag($event, 'image')"
-        (click)="add('image')"
-      >
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="3" y="5" width="18" height="14" rx="2" />
-            <circle cx="8.5" cy="10" r="1.5" />
-            <path d="M21 16l-5.5-5.5L7 19" />
-          </svg>
-        </span>
-        <span><strong>Imagen</strong><small>Logo o código QR</small></span>
-      </button>
+      @if (activePaletteTab() === 'components') {
+        <div class="panel-heading">
+          <span>Componentes</span>
+          <small>Arrastra o haz clic para agregar</small>
+        </div>
 
-      <button
-        class="palette-item"
-        type="button"
-        draggable="true"
-        (dragstart)="startPaletteDrag($event, 'container')"
-        (click)="add('container')"
-      >
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <rect x="4" y="4" width="16" height="16" rx="2" />
-            <path d="M4 10h16" />
-          </svg>
-        </span>
-        <span><strong>Contenedor</strong><small>Agrupa contenido</small></span>
-      </button>
-
-      <div class="palette-table">
         <button
           class="palette-item"
           type="button"
           draggable="true"
-          (dragstart)="startPaletteDrag($event, 'table')"
-          (click)="toggleTablePicker($event)"
+          (dragstart)="startPaletteDrag($event, 'text')"
+          (click)="add('text')"
+        >
+          <span class="item-icon text-icon" aria-hidden="true">T</span>
+          <span><strong>Texto</strong><small>Fijo o dinámico</small></span>
+        </button>
+
+        @for (
+          type of ['qrCode', 'pageNumber', 'line', 'rectangle', 'barcode', 'pageBreak'];
+          track type
+        ) {
+          <button
+            class="palette-item compact"
+            type="button"
+            draggable="true"
+            (dragstart)="startPaletteDrag($event, $any(type))"
+            (click)="add($any(type))"
+          >
+            <span class="item-icon">{{ iconFor($any(type)) }}</span>
+            <span
+              ><strong>{{ type }}</strong
+              ><small>Contrato 3.0</small></span
+            >
+          </button>
+        }
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'image')"
+          (click)="add('image')"
         >
           <span class="item-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <rect x="3" y="4" width="18" height="16" rx="2" />
-              <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10" r="1.5" />
+              <path d="M21 16l-5.5-5.5L7 19" />
             </svg>
           </span>
-          <span><strong>Tabla</strong><small>Elige columnas y filas</small></span>
+          <span><strong>Imagen</strong><small>Logo o código QR</small></span>
         </button>
 
-        @if (tablePickerOpen()) {
-          <div class="table-picker" (click)="$event.stopPropagation()">
-            <strong class="picker-title"> Tabla {{ pickerCols() }} × {{ pickerRows() }} </strong>
-            <div class="picker-grid">
-              @for (row of pickerRange; track row) {
-                @for (col of pickerRange; track col) {
-                  <button
-                    class="picker-cell"
-                    type="button"
-                    [class.active]="col <= pickerCols() && row <= pickerRows()"
-                    [attr.aria-label]="'Tabla de ' + col + ' × ' + row"
-                    (mouseenter)="hoverPicker(col, row)"
-                    (click)="pickTableSize(col, row)"
-                  ></button>
-                }
-              }
-            </div>
-            <small class="picker-hint">Clic para insertar la tabla</small>
-          </div>
-        }
-      </div>
-
-      <button
-        class="palette-item"
-        type="button"
-        draggable="true"
-        (dragstart)="startPaletteDrag($event, 'link')"
-        (click)="add('link')"
-      >
-        <span class="item-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <path d="M10 13a5 5 0 0 0 7.54.54l1.92-1.92a5 5 0 0 0-7.07-7.07L10.9 6" />
-            <path d="M14 11a5 5 0 0 0-7.54-.54L4.54 12.4a5 5 0 0 0 7.07 7.07L13.1 18" />
-          </svg>
-        </span>
-        <span><strong>Vínculo</strong><small>Texto con URL</small></span>
-      </button>
-
-      <div class="panel-heading blocks-heading">
-        <span>Contenedores prediseñados</span>
-        <small>Composiciones genéricas listas para editar</small>
-      </div>
-
-      @for (preset of containerPresets; track preset.kind) {
         <button
-          class="palette-item block-item"
+          class="palette-item"
           type="button"
           draggable="true"
-          (dragstart)="startContainerPresetDrag($event, preset.kind)"
-          (click)="addContainerPreset(preset.kind)"
+          (dragstart)="startPaletteDrag($event, 'container')"
+          (click)="add('container')"
         >
-          <span class="item-icon block-icon" aria-hidden="true">
-            {{ preset.icon }}
+          <span class="item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <rect x="4" y="4" width="16" height="16" rx="2" />
+              <path d="M4 10h16" />
+            </svg>
           </span>
-          <span>
-            <strong>{{ preset.label }}</strong>
-            <small>{{ preset.hint }}</small>
-          </span>
+          <span><strong>Contenedor</strong><small>Agrupa contenido</small></span>
         </button>
+
+        <div class="palette-table">
+          <button
+            class="palette-item"
+            type="button"
+            draggable="true"
+            (dragstart)="startPaletteDrag($event, 'table')"
+            (click)="toggleTablePicker($event)"
+          >
+            <span class="item-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M3 10h18M3 15h18M9 4v16M15 4v16" />
+              </svg>
+            </span>
+            <span><strong>Tabla</strong><small>Elige columnas y filas</small></span>
+          </button>
+
+          @if (tablePickerOpen()) {
+            <div class="table-picker" (click)="$event.stopPropagation()">
+              <strong class="picker-title"> Tabla {{ pickerCols() }} × {{ pickerRows() }} </strong>
+              <div class="picker-grid">
+                @for (row of pickerRange; track row) {
+                  @for (col of pickerRange; track col) {
+                    <button
+                      class="picker-cell"
+                      type="button"
+                      [class.active]="col <= pickerCols() && row <= pickerRows()"
+                      [attr.aria-label]="'Tabla de ' + col + ' × ' + row"
+                      (mouseenter)="hoverPicker(col, row)"
+                      (click)="pickTableSize(col, row)"
+                    ></button>
+                  }
+                }
+              </div>
+              <small class="picker-hint">Clic para insertar la tabla</small>
+            </div>
+          }
+        </div>
+
+        <button
+          class="palette-item"
+          type="button"
+          draggable="true"
+          (dragstart)="startPaletteDrag($event, 'link')"
+          (click)="add('link')"
+        >
+          <span class="item-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M10 13a5 5 0 0 0 7.54.54l1.92-1.92a5 5 0 0 0-7.07-7.07L10.9 6" />
+              <path d="M14 11a5 5 0 0 0-7.54-.54L4.54 12.4a5 5 0 0 0 7.07 7.07L13.1 18" />
+            </svg>
+          </span>
+          <span><strong>Vínculo</strong><small>Texto con URL</small></span>
+        </button>
+
+        <div class="panel-heading blocks-heading">
+          <span>Contenedores prediseñados</span>
+          <small>Composiciones genéricas listas para editar</small>
+        </div>
+
+        @for (preset of containerPresets; track preset.kind) {
+          <button
+            class="palette-item block-item"
+            type="button"
+            draggable="true"
+            (dragstart)="startContainerPresetDrag($event, preset.kind)"
+            (click)="addContainerPreset(preset.kind)"
+          >
+            <span class="item-icon block-icon" aria-hidden="true">
+              {{ preset.icon }}
+            </span>
+            <span>
+              <strong>{{ preset.label }}</strong>
+              <small>{{ preset.hint }}</small>
+            </span>
+          </button>
+        }
+      } @else {
+        <div class="panel-heading source-heading">
+          <span>Fuente de datos</span>
+          <small>Campos conocidos con path automático</small>
+        </div>
+
+        <input
+          class="source-search"
+          type="search"
+          placeholder="Buscar nombre, significado o path…"
+          aria-label="Buscar campos de la fuente de datos"
+          [value]="dataSourceQuery()"
+          (input)="searchDataSourceFields($event)"
+        />
+
+        @if (dataSourceLoading()) {
+          <div class="source-state" role="status">
+            <span class="source-spinner" aria-hidden="true"></span>
+            Cargando campos disponibles…
+          </div>
+        } @else if (dataSourceError()) {
+          <div class="source-state source-error" role="alert">
+            <strong>No se pudo cargar el catálogo</strong>
+            <small>{{ dataSourceError() }}</small>
+            <button type="button" (click)="loadDataSourceCatalog()">Reintentar</button>
+          </div>
+        } @else {
+          <div class="source-catalog">
+            @for (collection of filteredDataSourceCollections(); track collection.id) {
+              <details class="source-collection" open>
+                <summary>
+                  <span>
+                    <strong>{{ collection.name }}</strong>
+                    <small>{{ collection.description }}</small>
+                  </span>
+                  <span class="source-count">{{ collection.fields.length }}</span>
+                </summary>
+
+                @for (group of dataSourceGroups(collection); track group.name) {
+                  <section class="source-group">
+                    <h4>
+                      <span>{{ group.name }}</span>
+                      <small>{{ group.fields.length }}</small>
+                    </h4>
+
+                    @for (field of group.fields; track field.id) {
+                      <button
+                        class="source-field"
+                        type="button"
+                        draggable="true"
+                        [title]="'Arrastrar path: ' + field.path"
+                        (dragstart)="startDataSourceFieldDrag($event, field, collection)"
+                        (click)="addDataSourceField(field, collection)"
+                      >
+                        <span class="source-field-icon">↳</span>
+                        <span class="source-field-content">
+                          <strong>{{ field.displayName }}</strong>
+                          <small class="source-technical-name">{{ field.name }}</small>
+                          <span class="source-description">{{ field.description }}</span>
+                          <code>{{ field.path }}</code>
+                          <span class="source-field-meta">
+                            <small>{{ field.dataType }}</small>
+                            @if (field.cardinality) {
+                              <small>{{ field.cardinality }}</small>
+                            }
+                          </span>
+                        </span>
+                      </button>
+                    }
+                  </section>
+                }
+              </details>
+            } @empty {
+              <p class="source-empty">No hay campos registrados o no coinciden con la búsqueda.</p>
+            }
+          </div>
+        }
       }
 
-      <div class="panel-heading source-heading">
-        <span>Fuente de datos</span>
-        <small>Campos conocidos con path automático</small>
-      </div>
-
-      <input
-        class="source-search"
-        type="search"
-        placeholder="Buscar nombre, significado o path…"
-        aria-label="Buscar campos de la fuente de datos"
-        [value]="dataSourceQuery()"
-        (input)="searchDataSourceFields($event)"
-      />
-
-      <div class="source-catalog">
-        @for (collection of filteredDataSourceCollections(); track collection.id) {
-          <details class="source-collection" open>
-            <summary>
-              <strong>{{ collection.name }}</strong>
-              <small>{{ collection.fields.length }} campos</small>
-            </summary>
-
-            @for (field of collection.fields; track field.id) {
-              <button
-                class="source-field"
-                type="button"
-                draggable="true"
-                [title]="field.description"
-                (dragstart)="startDataSourceFieldDrag($event, field)"
-                (click)="addDataSourceField(field)"
-              >
-                <span class="source-field-icon">↳</span>
-                <span>
-                  <strong>{{ field.displayName }}</strong>
-                  <small>{{ field.path }}</small>
-                </span>
-              </button>
-            }
-          </details>
-        } @empty {
-          <p class="source-empty">No hay campos registrados o no coinciden con la búsqueda.</p>
-        }
-      </div>
-
       <section class="help-card">
-        <strong>Cómo empezar</strong>
-        <ol>
-          <li>Arrastra un componente a la hoja.</li>
-          <li>Suéltalo donde lo necesites.</li>
-          <li>Configúralo a la derecha.</li>
-        </ol>
+        @if (activePaletteTab() === 'dataSources') {
+          <strong>Cómo enlazar campos</strong>
+          <ol>
+            <li>Arrastra un campo para crear un texto dinámico.</li>
+            <li>Suéltalo sobre un componente compatible para enlazarlo.</li>
+            <li>También puedes hacer clic para agregarlo a la hoja.</li>
+          </ol>
+        } @else {
+          <strong>Cómo empezar</strong>
+          <ol>
+            <li>Arrastra un componente a la hoja.</li>
+            <li>Suéltalo donde lo necesites.</li>
+            <li>Configúralo a la derecha.</li>
+          </ol>
+        }
       </section>
     </aside>
 
@@ -336,7 +420,45 @@
           {{ documentKindOf(store.template().page) === 'pos' ? 'Tirilla' : 'Hoja' }}
           · {{ store.template().page.widthMm }} × {{ store.template().page.heightMm }} mm
         </span>
-        <span>{{ store.template().components.length }} componentes</span>
+        <span>
+          Página {{ store.activePageIndex() + 1 }} de {{ store.pageCount() }} ·
+          {{ store.template().components.length }} componentes
+        </span>
+      </div>
+
+      <div class="pages-bar" role="tablist" aria-label="Páginas del documento">
+        @for (pageEntry of store.pages(); track pageEntry.id; let pageIndex = $index) {
+          <div class="page-tab" [class.active]="store.activePageIndex() === pageIndex">
+            <button
+              class="page-tab-label"
+              type="button"
+              role="tab"
+              [attr.aria-selected]="store.activePageIndex() === pageIndex"
+              (click)="selectPage(pageIndex)"
+            >
+              <strong>Página {{ pageIndex + 1 }}</strong>
+              <small>
+                @if (documentKindOf(pageEntry.page) === 'pos') {
+                  Tirilla
+                } @else {
+                  {{ pageEntry.page.orientation === 'landscape' ? 'Horizontal' : 'Vertical' }}
+                }
+              </small>
+            </button>
+            @if (store.pageCount() > 1) {
+              <button
+                class="page-tab-remove"
+                type="button"
+                aria-label="Eliminar página"
+                title="Eliminar página"
+                (click)="removePage(pageIndex, $event)"
+              >
+                ✕
+              </button>
+            }
+          </div>
+        }
+        <button class="page-add" type="button" (click)="addPage()">+ Agregar página</button>
       </div>
 
       <ng-template #elementTemplate let-element let-parentId="parentId">
@@ -357,9 +479,19 @@
           [style.padding.mm]="element.style?.padding ?? 0"
           (pointerdown)="startInteraction($event, element, 'move')"
           (click)="select($event, element)"
-          (dragover)="element.type === 'container' && allowContainerDrop($event)"
-          (drop)="element.type === 'container' && dropOnContainer($event, element)"
+          (dragover)="
+            element.type === 'container'
+              ? allowContainerDrop($event)
+              : allowDataSourceBindingDrop($event)
+          "
+          (drop)="
+            element.type === 'container'
+              ? dropOnContainer($event, element)
+              : dropDataSourceOnElement($event, element)
+          "
+          [class.has-rotation]="isRotated(element)"
         >
+          <div class="element-body" [class.rotated]="isRotated(element)">
           @if (element.type === 'text') {
             <div
               class="text-content"
@@ -371,6 +503,7 @@
               [style.color]="element.style?.color ?? '#111827'"
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
+              [style.transform]="rotationTransform(element)"
             >
               {{ previewText(element) }}
             </div>
@@ -394,6 +527,7 @@
           @if (element.type === 'link') {
             <div
               class="link-content"
+              [title]="element.content?.url ?? ''"
               [style.font-family]="element.style?.fontFamily ?? 'Arial'"
               [style.font-size.pt]="element.style?.fontSizePt ?? 10"
               [style.font-weight]="element.style?.bold ? 700 : 400"
@@ -403,7 +537,7 @@
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
             >
-              {{ previewText(element.content?.value) }}
+              {{ linkPreview(element) }}
             </div>
           }
 
@@ -413,7 +547,7 @@
             } @else {
               <div class="image-placeholder">
                 <span>▣</span>
-                <small>{{ element.content?.dataPath || 'Runtime.QrImage' }}</small>
+                <small>{{ element.content?.dataPath || 'System.QrImage' }}</small>
               </div>
             }
           }
@@ -462,7 +596,7 @@
             >
               <colgroup>
                 @for (column of tableColumns(element); track column.id) {
-                  <col [style.width.mm]="column.widthMm ?? null" />
+                  <col [style.width.%]="columnWidthPercent(element, column)" />
                 }
               </colgroup>
               @if (tableHasHeader(element)) {
@@ -526,6 +660,7 @@
               <span class="container-empty">Suelta componentes aquí</span>
             }
           }
+          </div>
 
           @if (repeatOnFor(element) !== 'allPages') {
             <span class="event-badge" [title]="'Evento de impresión: ' + repeatOnLabel(element)">
@@ -630,6 +765,22 @@
                 (input)="updateNumber('height', $event)"
             /></label>
           </div>
+          <label class="field" style="margin-top: 10px">
+            Rotación del contenido
+            <select
+              [value]="selected.rotationDegrees ?? 0"
+              (change)="updateRotation($event)"
+            >
+              <option value="0">0° · horizontal</option>
+              <option value="-90">-90° · vertical (como en el PDF)</option>
+              <option value="90">90° · vertical invertido</option>
+              <option value="180">180°</option>
+            </select>
+          </label>
+          <p class="hint">
+            Para la franja del proveedor tecnológico elige <strong>-90°</strong> y guarda la
+            plantilla; así el editor y el PDF quedan alineados.
+          </p>
         </section>
 
         <section class="property-section">

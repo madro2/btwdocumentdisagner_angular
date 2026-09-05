@@ -87,8 +87,43 @@ function toDesignContract(dto: PdfDesignTemplateDto): DesignContract | null {
         type: dto.documentType || contract.document.type,
         version: Math.max(1, dto.designVersion || 1),
       },
+      components: restoreVerticalRotation(contract.components ?? []),
     };
   } catch {
     return null;
   }
+}
+
+/** Recupera rotationDegrees=-90 en franjas verticales que lo perdieron al guardarse. */
+function restoreVerticalRotation(
+  components: DesignContract['components'],
+): DesignContract['components'] {
+  return components.map((component) => {
+    const children = component.components
+      ? restoreVerticalRotation(component.components)
+      : component.components;
+
+    const missingRotation = (component.rotationDegrees ?? 0) === 0;
+    const isKnownVertical =
+      component.type === 'text' &&
+      missingRotation &&
+      (component.id === 'technology-provider-vertical-label' ||
+        /vertical/i.test(component.name ?? '') ||
+        (component.position.width <= 8 &&
+          component.position.height >= 80 &&
+          /PROVEEDOR\s+TECN/i.test(component.content?.value ?? '')));
+
+    if (isKnownVertical) {
+      return {
+        ...component,
+        rotationDegrees: -90,
+        components: children,
+      };
+    }
+
+    if (children !== component.components) {
+      return { ...component, components: children };
+    }
+    return component;
+  });
 }
