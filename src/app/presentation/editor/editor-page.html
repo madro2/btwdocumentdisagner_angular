@@ -446,10 +446,19 @@
             <table
               class="table-content"
               [class.borderless]="tableBorderless(element)"
+              [class.border-all]="(element.style?.borderPreset ?? 'all') === 'all'"
+              [class.border-horizontal]="element.style?.borderPreset === 'horizontal'"
+              [class.border-outer]="element.style?.borderPreset === 'outer'"
+              [class.border-vertical]="element.style?.borderPreset === 'vertical'"
+              [class.border-header-only]="element.style?.borderPreset === 'headerOnly'"
+              [class.border-none]="element.style?.borderPreset === 'none'"
               [style.height]="element.style?.rowHeightMm ? 'auto' : '100%'"
               [style.font-family]="element.style?.fontFamily ?? 'Arial'"
               [style.font-size.pt]="element.style?.fontSizePt ?? 9"
               [style.color]="element.style?.color ?? '#111827'"
+              [style.--cell-padding.mm]="element.style?.cellPaddingMm ?? 1"
+              [style.--border-color]="element.style?.border?.color ?? '#cbd5e1'"
+              [style.--border-width.pt]="element.style?.border?.widthPt ?? 0.75"
             >
               <colgroup>
                 @for (column of tableColumns(element); track column.id) {
@@ -466,6 +475,7 @@
                         "
                         [style.background]="element.style?.header?.background ?? null"
                         [style.font-weight]="element.style?.header?.bold === false ? 400 : 700"
+                        [style.padding.mm]="element.style?.cellPaddingMm ?? 1"
                       >
                         {{ column.title }}
                       </th>
@@ -475,11 +485,15 @@
               }
               <tbody>
                 @for (row of tableBodyRows(element); track $index) {
-                  <tr [style.height.mm]="element.style?.rowHeightMm ?? null">
+                  <tr
+                    [style.height.mm]="element.style?.rowHeightMm ?? null"
+                    [style.background]="($index % 2 === 1 && element.style?.alternateRowBackground) ? element.style?.alternateRowBackground : (element.style?.background ?? 'transparent')"
+                  >
                     @for (cell of row; track $index) {
                       <td
                         [style.text-align]="cellAlignment(element, $index)"
                         [style.font-weight]="cellBold(element, $index) ? 700 : null"
+                        [style.padding.mm]="element.style?.cellPaddingMm ?? 1"
                       >
                         {{ cell }}
                       </td>
@@ -753,23 +767,58 @@
 
           @if (tableMode(selected) !== 'fixedRows') {
             <section class="property-section">
-              <h3>Columnas</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h3 style="margin: 0;">Columnas</h3>
+                <button
+                  type="button"
+                  class="button ghost"
+                  style="padding: 3px 6px; font-size: 11px;"
+                  (click)="distributeColumnsEqually()"
+                  title="Reparte el ancho disponible equitativamente"
+                >
+                  ⇄ Distribuir anchos
+                </button>
+              </div>
+
               @for (column of tableColumns(selected) ?? []; track column.id) {
-                <div class="column-row">
+                <div class="column-row" style="display: grid; grid-template-columns: 1fr 1fr 65px 75px 24px; gap: 4px; align-items: center; margin-bottom: 6px;">
                   <input
                     type="text"
-                    placeholder="Encabezado"
+                    placeholder="Título"
+                    title="Encabezado"
                     aria-label="Encabezado de la columna"
                     [value]="column.title ?? ''"
                     (input)="updateColumn(column, 'title', $event)"
                   />
                   <input
                     type="text"
-                    placeholder="Ruta XML"
+                    placeholder="Ruta"
+                    title="Ruta XML"
                     aria-label="Ruta XML de la columna"
                     [value]="column.dataPath ?? ''"
                     (input)="updateColumn(column, 'dataPath', $event)"
                   />
+                  <input
+                    type="number"
+                    min="5"
+                    max="300"
+                    step="1"
+                    placeholder="mm"
+                    title="Ancho en mm"
+                    aria-label="Ancho de la columna en mm"
+                    [value]="column.widthMm ?? ''"
+                    (input)="updateColumn(column, 'widthMm', $event)"
+                  />
+                  <select
+                    title="Alineación"
+                    aria-label="Alineación de columna"
+                    [value]="column.alignment ?? 'left'"
+                    (change)="updateColumn(column, 'alignment', $event)"
+                  >
+                    <option value="left">Izq</option>
+                    <option value="center">Cent</option>
+                    <option value="right">Der</option>
+                  </select>
                   <button
                     class="column-remove"
                     type="button"
@@ -785,6 +834,122 @@
               </button>
             </section>
           }
+
+          <section class="property-section table-style-section">
+            <h3>Diseño de Tabla y Celdas</h3>
+
+            <div class="field">
+              <span class="control-label" style="font-weight: 600; font-size: 12px; margin-bottom: 4px; display: block;">
+                Estilo de Cuadrícula / Bordes
+              </span>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;">
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="(selected.style?.borderPreset ?? 'all') === 'all'"
+                  (click)="setTableBorderPreset('all')"
+                  title="Cuadrícula completa"
+                >
+                  ⊞ Completa
+                </button>
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="selected.style?.borderPreset === 'horizontal'"
+                  (click)="setTableBorderPreset('horizontal')"
+                  title="Solo líneas divisorias horizontales"
+                >
+                  ≑ Horizontal
+                </button>
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="selected.style?.borderPreset === 'outer'"
+                  (click)="setTableBorderPreset('outer')"
+                  title="Solo marco exterior"
+                >
+                  ⬚ Exterior
+                </button>
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="selected.style?.borderPreset === 'vertical'"
+                  (click)="setTableBorderPreset('vertical')"
+                  title="Solo líneas verticales"
+                >
+                  ▥ Vertical
+                </button>
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="selected.style?.borderPreset === 'headerOnly'"
+                  (click)="setTableBorderPreset('headerOnly')"
+                  title="Solo línea divisoria en encabezado"
+                >
+                  ⎚ Cabecera
+                </button>
+                <button
+                  type="button"
+                  class="format-button"
+                  style="font-size: 11px; padding: 5px 2px;"
+                  [class.active]="selected.style?.borderPreset === 'none'"
+                  (click)="setTableBorderPreset('none')"
+                  title="Sin bordes"
+                >
+                  ⊘ Ninguno
+                </button>
+              </div>
+            </div>
+
+            <div class="field-grid" style="margin-top: 10px;">
+              <label>
+                Alto filas (mm)
+                <input
+                  type="number"
+                  min="4"
+                  max="50"
+                  step="0.5"
+                  [value]="selected.style?.rowHeightMm ?? 8"
+                  (input)="updateTableRowHeight($event)"
+                />
+              </label>
+              <label>
+                Padding celda (mm)
+                <input
+                  type="number"
+                  min="0"
+                  max="15"
+                  step="0.5"
+                  [value]="selected.style?.cellPaddingMm ?? 1"
+                  (input)="updateTableCellPadding($event)"
+                />
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Fondo encabezado
+                <input
+                  type="color"
+                  [value]="selected.style?.header?.background ?? '#f3f4f6'"
+                  (input)="updateTableHeader('background', $any($event.target).value)"
+                />
+              </label>
+              <label>
+                Fila alterna (cebra)
+                <input
+                  type="color"
+                  [value]="selected.style?.alternateRowBackground ?? '#ffffff'"
+                  (input)="updateAlternateRowBackground($event)"
+                />
+              </label>
+            </div>
+          </section>
         }
 
         @if (selected.type === 'text' || selected.type === 'link' || selected.type === 'table') {

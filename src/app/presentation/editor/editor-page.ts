@@ -943,17 +943,90 @@ export class EditorPage {
     this.status.set('Columna agregada');
   }
 
-  updateColumn(column: TableColumn, property: 'title' | 'dataPath', event: Event): void {
+  updateColumn(
+    column: TableColumn,
+    property: 'title' | 'dataPath' | 'widthMm' | 'alignment',
+    event: Event,
+  ): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
 
-    const value = (event.target as HTMLInputElement).value;
+    const rawVal = (event.target as HTMLInputElement | HTMLSelectElement).value;
+    const value = property === 'widthMm' ? (rawVal ? Number(rawVal) : undefined) : rawVal;
     this.store.updateElement(selected.id, {
       columns: this.tableColumns(selected).map((item) =>
         item.id === column.id ? { ...item, [property]: value } : item,
       ),
     });
     this.status.set('Cambios sin guardar');
+  }
+
+  distributeColumnsEqually(): void {
+    const selected = this.store.selectedElement();
+    if (!selected || !selected.columns?.length) return;
+
+    const totalWidth = selected.position.width || 190;
+    const count = selected.columns.length;
+    const equalWidth = Math.round((totalWidth / count) * 10) / 10;
+
+    this.store.updateElement(selected.id, {
+      columns: selected.columns.map((c) => ({ ...c, widthMm: equalWidth })),
+    });
+    this.status.set('Columnas distribuidas equitativamente');
+  }
+
+  setTableBorderPreset(
+    preset: 'all' | 'horizontal' | 'outer' | 'vertical' | 'headerOnly' | 'none',
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateStyle(selected.id, {
+      borderPreset: preset,
+      border: {
+        ...selected.style?.border,
+        style: preset === 'none' ? 'none' : 'solid',
+        widthPt: selected.style?.border?.widthPt || 0.75,
+        color: selected.style?.border?.color || '#cbd5e1',
+      },
+    });
+    this.status.set(`Estilo de bordes: ${preset}`);
+  }
+
+  updateTableHeader(
+    property: 'bold' | 'background' | 'alignment',
+    value: boolean | string,
+  ): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+
+    this.store.updateStyle(selected.id, {
+      header: {
+        ...selected.style?.header,
+        [property]: value,
+      },
+    });
+  }
+
+  updateTableCellPadding(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = Number((event.target as HTMLInputElement).value);
+    this.store.updateStyle(selected.id, { cellPaddingMm: val });
+  }
+
+  updateTableRowHeight(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = Number((event.target as HTMLInputElement).value);
+    this.store.updateStyle(selected.id, { rowHeightMm: val });
+  }
+
+  updateAlternateRowBackground(event: Event): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    const val = (event.target as HTMLInputElement).value;
+    this.store.updateStyle(selected.id, { alternateRowBackground: val });
   }
 
   removeColumn(column: TableColumn): void {
