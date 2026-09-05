@@ -366,6 +366,8 @@
               [style.font-family]="element.style?.fontFamily ?? 'Arial'"
               [style.font-size.pt]="element.style?.fontSizePt ?? 10"
               [style.font-weight]="element.style?.bold ? 700 : 400"
+              [style.font-style]="element.style?.italic ? 'italic' : 'normal'"
+              [style.text-decoration]="element.style?.underline ? 'underline' : 'none'"
               [style.color]="element.style?.color ?? '#111827'"
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
@@ -395,6 +397,8 @@
               [style.font-family]="element.style?.fontFamily ?? 'Arial'"
               [style.font-size.pt]="element.style?.fontSizePt ?? 10"
               [style.font-weight]="element.style?.bold ? 700 : 400"
+              [style.font-style]="element.style?.italic ? 'italic' : 'normal'"
+              [style.text-decoration]="element.style?.underline !== false ? 'underline' : 'none'"
               [style.color]="element.style?.color ?? '#1d4ed8'"
               [style.text-align]="element.style?.alignment ?? 'left'"
               [style.line-height]="element.style?.lineHeight ?? 1.2"
@@ -803,14 +807,38 @@
               /></label>
             </div>
             @if (selected.type !== 'table') {
-              <button
-                class="format-button"
-                type="button"
-                [class.active]="selected.style?.bold"
-                (click)="toggleBold()"
-              >
-                <strong>B</strong> Negrita
-              </button>
+              <div style="display: flex; gap: 6px; margin-top: 8px;">
+                <button
+                  class="format-button"
+                  type="button"
+                  style="flex: 1;"
+                  [class.active]="selected.style?.bold"
+                  (click)="toggleBold()"
+                  title="Negrita"
+                >
+                  <strong>B</strong> Negrita
+                </button>
+                <button
+                  class="format-button"
+                  type="button"
+                  style="flex: 1;"
+                  [class.active]="selected.style?.italic"
+                  (click)="toggleItalic()"
+                  title="Cursiva"
+                >
+                  <em>I</em> Cursiva
+                </button>
+                <button
+                  class="format-button"
+                  type="button"
+                  style="flex: 1;"
+                  [class.active]="selected.style?.underline"
+                  (click)="toggleUnderline()"
+                  title="Subrayado"
+                >
+                  <span style="text-decoration: underline;">U</span> Subrayado
+                </button>
+              </div>
             }
           </section>
         }

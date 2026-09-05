@@ -1024,6 +1024,22 @@ export class EditorPage {
     });
   }
 
+  toggleItalic(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      italic: !selected.style?.italic,
+    });
+  }
+
+  toggleUnderline(): void {
+    const selected = this.store.selectedElement();
+    if (!selected) return;
+    this.store.updateStyle(selected.id, {
+      underline: !selected.style?.underline,
+    });
+  }
+
   changeParent(event: Event): void {
     const selected = this.store.selectedElement();
     if (!selected) return;
@@ -1071,15 +1087,25 @@ export class EditorPage {
     this.store.versionSaveInfo().subscribe({
       next: async ({ exists, latestVersion, nextVersion }) => {
         if (exists) {
-          const confirmed = await confirmAction({
-            title: 'Se creará una nueva versión',
-            text:
-              `La última versión de este formato es la ${latestVersion}. ` +
-              `Los cambios se guardarán como versión ${nextVersion} ` +
-              'y la versión actual se conservará sin cambios.',
-            confirmText: `Crear versión ${nextVersion}`,
+          const updateOption = await confirmAction({
+            title: "¿Cómo deseas guardar?",
+            text: `El formato ya existe (versión ${latestVersion}). ¿Deseas actualizar la versión actual o crear la nueva versión ${nextVersion}?`,
+            confirmText: "Actualizar actual",
+            cancelText: `Crear versión ${nextVersion}`,
           });
-          if (!confirmed) return;
+
+          if (updateOption) {
+            this.store.updateCurrentVersion().subscribe({
+              next: () => {
+                this.status.set("Versión actual actualizada con éxito");
+                notifySuccess("Formato actualizado", this.store.template().document.name || undefined);
+              },
+              error: () => {
+                this.status.set("No fue posible actualizar la versión actual.");
+              },
+            });
+            return;
+          }
 
           this.store.saveAsNewVersion(nextVersion).subscribe({
             next: (versionedTemplate) => {
@@ -1088,7 +1114,7 @@ export class EditorPage {
                 `Versión ${nextVersion} creada`,
                 versionedTemplate.document.name || undefined,
               );
-              void this.router.navigate(['/editor', versionedTemplate.document.id], {
+              void this.router.navigate(["/editor", versionedTemplate.document.id], {
                 replaceUrl: true,
               });
             },
@@ -1103,18 +1129,18 @@ export class EditorPage {
 
         this.store.save().subscribe({
           next: () => {
-            this.status.set('Formato guardado en el servidor');
-            notifySuccess('Formato guardado', this.store.template().document.name || undefined);
+            this.status.set("Formato guardado en el servidor");
+            notifySuccess("Formato guardado", this.store.template().document.name || undefined);
             const newId = this.store.template().document.id;
-            void this.router.navigate(['/editor', newId], { replaceUrl: true });
+            void this.router.navigate(["/editor", newId], { replaceUrl: true });
           },
           error: () => {
-            this.status.set('No fue posible guardar el formato.');
+            this.status.set("No fue posible guardar el formato.");
           },
         });
       },
       error: () => {
-        this.status.set('No fue posible consultar las versiones existentes del formato.');
+        this.status.set("No fue posible consultar las versiones existentes del formato.");
       },
     });
   }

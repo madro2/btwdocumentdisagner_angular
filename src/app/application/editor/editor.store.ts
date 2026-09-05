@@ -392,6 +392,15 @@ export class EditorStore {
     this.selectedIdState.set(null);
   }
 
+    updateCurrentVersion(): Observable<void> {
+    this.templateState.update((template) => ({
+      ...template,
+      updatedAt: new Date().toISOString(),
+    }));
+    const current = this.templateState();
+    return this.repository.update(current.document.id, current);
+  }
+
   save(): Observable<void> {
     this.templateState.update((template) => ({
       ...template,
